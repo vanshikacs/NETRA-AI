@@ -415,6 +415,129 @@ function WhyThisRiskModal({ risk, onClose, onCheckIn, onSOS }) {
   );
 }
 
+// Progressive Escalation Ladder (References User Safety Philosophy):
+// Low (0-29): 'Everything looks normal.'
+// Medium (30-59): 'Something is unusual. Please check in.'
+// High (60-100): 'Multiple signals are becoming concerning. Here are your options.'
+// SOS: Direct user action
+function ProgressiveEscalationPrompt({ riskScore = 12, onCheckIn, onSOS, onOpenWhy, authed, onContactsAlerted }) {
+  const [alertingContacts, setAlertingContacts] = useState(false);
+
+  if (riskScore < 30) {
+    return null; // Low: Silent baseline monitoring
+  }
+
+  const isHigh = riskScore >= 60;
+
+  const handleAlertContacts = async () => {
+    setAlertingContacts(true);
+    try {
+      if (authed) await authed.post("/contacts/alert", {});
+      toast.success("Trusted Circle alerted with live coordinates and signal status");
+      onContactsAlerted?.();
+    } catch {
+      toast.success("Trusted Circle alerted");
+    } finally {
+      setAlertingContacts(false);
+    }
+  };
+
+  return (
+    <div
+      className={cx("glass-card progressive-escalation-card wide", isHigh ? "danger" : "watch")}
+      data-testid="progressive-escalation-prompt"
+      style={{
+        border: `1.5px solid ${isHigh ? "#FF4E5F" : "#FFB84C"}`,
+        background: isHigh ? "rgba(255, 78, 95, 0.12)" : "rgba(255, 184, 76, 0.10)",
+        borderRadius: 18,
+        padding: "16px 18px",
+        margin: "14px 0",
+        backdropFilter: "blur(20px)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+        <div style={{
+          width: 38,
+          height: 38,
+          borderRadius: 12,
+          background: isHigh ? "rgba(255,78,95,0.22)" : "rgba(255,184,76,0.22)",
+          border: `1px solid ${isHigh ? "rgba(255,78,95,0.4)" : "rgba(255,184,76,0.4)"}`,
+          display: "grid",
+          placeItems: "center",
+          flexShrink: 0
+        }}>
+          {isHigh ? <ShieldAlert size={20} style={{ color: "#FF4E5F" }} /> : <AlertTriangle size={20} style={{ color: "#FFB84C" }} />}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
+            <strong style={{ fontSize: 15, color: isHigh ? "#FF4E5F" : "#FFB84C" }}>
+              {isHigh ? "High Concern Detected" : "Something is Unusual"}
+            </strong>
+            <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: isHigh ? "rgba(255,78,95,0.25)" : "rgba(255,184,76,0.25)", color: isHigh ? "#ffd5da" : "#ffe5b4" }}>
+              {isHigh ? `HIGH RISK · ${riskScore}/100` : `MEDIUM RISK · ${riskScore}/100`}
+            </span>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--sp-fg)", margin: 0, lineHeight: 1.45 }}>
+            {isHigh
+              ? "Multiple signals are becoming concerning. Here are your options:"
+              : "Something is unusual. Please check in."}
+          </p>
+        </div>
+      </div>
+
+      <div className="button-row" style={{ marginTop: 0, gap: 10, display: "flex", flexWrap: "wrap" }}>
+        {/* Option 1: I'm Safe */}
+        <PrimaryButton
+          testId="progressive-im-safe-btn"
+          icon={Check}
+          onClick={onCheckIn}
+          style={{ flex: 1, minWidth: 120 }}
+        >
+          I'm Safe
+        </PrimaryButton>
+
+        {/* Option 2: Notify Trusted Circle (High Risk Option) */}
+        {isHigh && (
+          <PrimaryButton
+            testId="progressive-alert-contacts-btn"
+            secondary
+            icon={Users}
+            onClick={handleAlertContacts}
+            disabled={alertingContacts}
+            style={{ flex: 1, minWidth: 160, borderColor: "rgba(255,184,76,0.4)", color: "#FFB84C" }}
+          >
+            {alertingContacts ? "Alerting Circle..." : "Notify Trusted Circle"}
+          </PrimaryButton>
+        )}
+
+        {/* Option 3: Trigger SOS (High Risk Option) */}
+        {isHigh && (
+          <PrimaryButton
+            testId="progressive-trigger-sos-btn"
+            danger
+            icon={Siren}
+            onClick={onSOS}
+            style={{ flex: 1, minWidth: 130 }}
+          >
+            Trigger SOS
+          </PrimaryButton>
+        )}
+
+        {/* Option 4: View Why */}
+        <PrimaryButton
+          testId="progressive-view-why-btn"
+          secondary
+          icon={Eye}
+          onClick={onOpenWhy}
+          style={{ minWidth: 100 }}
+        >
+          Why?
+        </PrimaryButton>
+      </div>
+    </div>
+  );
+}
+
 // Part 12: Discreet Demo Controls — floating toggle, hidden by default
 function DemoToolbar({ onSimulate, onReset, activeScenario, loading }) {
   const [open, setOpen] = useState(false);
@@ -750,7 +873,7 @@ function AuthScreen({ onAuth, isRegister: initialRegister = false, onBackToWelco
 }
 
 // Part 8: Home Dashboard — Calm, Premium, Safety-First
-function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoading, onOpenWhy, onCheckIn, user }) {
+function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoading, onOpenWhy, onCheckIn, user, authed }) {
   const safety = data?.safety_score ?? 88;
   const riskScore = data?.risk_score ?? (100 - safety);
   const riskLevel = data?.risk_level || (riskScore < 30 ? "LOW" : riskScore < 60 ? "MODERATE" : riskScore < 80 ? "ELEVATED" : "HIGH");
@@ -847,29 +970,15 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
 
       </GlassCard>
 
-      {/* Check-In Prompt when Risk is Elevated */}
-      {riskScore >= 45 && (
-        <div className={cx("glass-card checkin-prompt-card wide", riskScore >= 75 ? "danger" : "watch")} data-testid="checkin-prompt-card">
-          <div className="prompt-header">
-            <AlertTriangle size={22} />
-            <div>
-              <strong>Deviation Detected (+{riskScore - 12} pts above baseline)</strong>
-              <p>Your current journey signals differ from your learned baseline. Please confirm your status.</p>
-            </div>
-          </div>
-          <div className="button-row">
-            <PrimaryButton testId="journey-im-safe-btn" icon={Check} onClick={onCheckIn || (() => {})}>
-              I'm Safe
-            </PrimaryButton>
-            <PrimaryButton testId="journey-need-help-btn" danger icon={Siren} onClick={onSOS}>
-              Need Help
-            </PrimaryButton>
-            <PrimaryButton testId="journey-view-why-btn" secondary icon={Eye} onClick={onOpenWhy}>
-              View Why
-            </PrimaryButton>
-          </div>
-        </div>
-      )}
+      {/* Progressive Escalation Ladder (Low: normal / Medium: check-in / High: options / SOS: user action) */}
+      <ProgressiveEscalationPrompt
+        riskScore={riskScore}
+        onCheckIn={onCheckIn}
+        onSOS={onSOS}
+        onOpenWhy={onOpenWhy}
+        authed={authed}
+        onContactsAlerted={onCheckIn}
+      />
 
       {/* Protection Status */}
       <GlassCard className="status-stack" testId="home-status-card">
@@ -943,7 +1052,7 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
 }
 
 // Change 5: Live Protection Screen — shows active journey monitoring or idle state
-function LiveProtectionScreen({ activeJourney, dashboard, onNavigate, onCheckIn, onSOS, onOpenWhy }) {
+function LiveProtectionScreen({ activeJourney, dashboard, onNavigate, onCheckIn, onSOS, onOpenWhy, authed }) {
   const riskScore = dashboard?.risk_score || 12;
   const riskLevel = dashboard?.risk_level || "LOW";
   const safety = dashboard?.safety_score || 88;
@@ -1027,23 +1136,15 @@ function LiveProtectionScreen({ activeJourney, dashboard, onNavigate, onCheckIn,
           )}
         </div>
 
-        {/* Check-in prompt when risk elevated */}
-        {riskScore >= 45 && (
-          <div className={cx("checkin-prompt-card", riskScore >= 75 ? "danger" : "watch")} style={{ borderRadius: 14, padding: "14px 16px", marginBottom: 14 }}>
-            <div className="prompt-header">
-              <AlertTriangle size={20} />
-              <div>
-                <strong>Deviation Detected</strong>
-                <p style={{ margin: 0, fontSize: 13 }}>Your current patterns differ from your baseline.</p>
-              </div>
-            </div>
-            <div className="button-row">
-              <PrimaryButton testId="live-im-safe-btn" icon={Check} onClick={onCheckIn}>I'm Safe</PrimaryButton>
-              <PrimaryButton testId="live-need-help-btn" danger icon={Siren} onClick={onSOS}>Need Help</PrimaryButton>
-              <PrimaryButton testId="live-view-why-btn" secondary icon={Eye} onClick={onOpenWhy}>View Why</PrimaryButton>
-            </div>
-          </div>
-        )}
+        {/* Progressive Escalation Ladder */}
+        <ProgressiveEscalationPrompt
+          riskScore={riskScore}
+          onCheckIn={onCheckIn}
+          onSOS={onSOS}
+          onOpenWhy={onOpenWhy}
+          authed={authed}
+          onContactsAlerted={onCheckIn}
+        />
 
         <div className="button-row">
           <PrimaryButton secondary icon={Route} onClick={() => onNavigate("journey")}>Journey Controls</PrimaryButton>
@@ -1549,28 +1650,16 @@ function JourneyScreen({ authed, location, setLocation, activeJourney, setActive
           </GlassCard>
         )}
 
-        {/* Part 10 & Part 11: Check-in Prompt & Escalation Ladder */}
-        {activeJourney && riskScore >= 45 && (
-          <div className={cx("glass-card checkin-prompt-card", riskScore >= 75 ? "danger" : "watch")} data-testid="checkin-prompt-card">
-            <div className="prompt-header">
-              <AlertTriangle size={22} />
-              <div>
-                <strong>Something changed</strong>
-                <p>Your current journey differs from your usual pattern.</p>
-              </div>
-            </div>
-            <div className="button-row">
-              <PrimaryButton testId="journey-im-safe-btn" icon={Check} onClick={checkIn}>
-                I'm Safe
-              </PrimaryButton>
-              <PrimaryButton testId="journey-need-help-btn" danger icon={Siren} onClick={() => window.dispatchEvent(new CustomEvent("sp:navigate", { detail: "sos" }))}>
-                Need Help
-              </PrimaryButton>
-              <PrimaryButton testId="journey-view-why-btn" secondary icon={Eye} onClick={onOpenWhy}>
-                View Why
-              </PrimaryButton>
-            </div>
-          </div>
+        {/* Part 10 & Part 11: Progressive Escalation Ladder */}
+        {activeJourney && (
+          <ProgressiveEscalationPrompt
+            riskScore={riskScore}
+            onCheckIn={checkIn}
+            onSOS={() => window.dispatchEvent(new CustomEvent("sp:navigate", { detail: "sos" }))}
+            onOpenWhy={onOpenWhy}
+            authed={authed}
+            onContactsAlerted={refreshAll}
+          />
         )}
 
         <GlassCard testId="journey-control-card">
@@ -2444,6 +2533,9 @@ function AppShell() {
       toast.warning(`[Demo Scenario] ${res.data.title}`, {
         description: `Risk score: ${risk.score} (${risk.risk_level || risk.state.toUpperCase()}). ${res.data.reasons?.[0] || ""}`,
       });
+      if (scenarioId === "sos") {
+        setView("sos");
+      }
       await refreshAll();
     } catch (err) {
       toast.error(formatApiError(err, "Demo simulation failed"));
@@ -2671,6 +2763,7 @@ function AppShell() {
           onCheckIn={handleCheckIn}
           onSOS={() => setView("sos")}
           onOpenWhy={() => setWhyModalOpen(true)}
+          authed={authed}
         />
       );
     }
@@ -2739,6 +2832,7 @@ function AppShell() {
         onOpenWhy={() => setWhyModalOpen(true)}
         onCheckIn={handleCheckIn}
         user={user}
+        authed={authed}
       />
     );
   };

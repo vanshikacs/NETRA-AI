@@ -968,6 +968,23 @@ async def update_contact(contact_id: str, payload: ContactRequest, user: Dict[st
     return serialize_doc(updated)
 
 
+@api_router.post("/contacts/alert")
+async def alert_trusted_contacts(payload: Dict[str, Any] = None, user: Dict[str, Any] = Depends(get_current_user)):
+    contacts = await db.contacts.find({"user_id": user["id"]}, {"_id": 0}).to_list(50)
+    for c in contacts:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "type": "contact_alert",
+            "title": f"Safety Alert to {c['name']}",
+            "body": "User shared a proactive alert with Trusted Circle: Multi-signal risk detected. Monitoring active.",
+            "read": False,
+            "created_at": now_iso(),
+        })
+    await create_audit(user["id"], "contacts.alert", {"count": len(contacts)})
+    return {"status": "alerted", "count": len(contacts), "message": f"{len(contacts)} response circle members notified"}
+
+
 @api_router.delete("/contacts/{contact_id}")
 async def delete_contact(contact_id: str, user: Dict[str, Any] = Depends(get_current_user)):
     result = await db.contacts.delete_one({"id": contact_id, "user_id": user["id"]})
