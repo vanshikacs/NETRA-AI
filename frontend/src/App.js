@@ -2318,6 +2318,7 @@ function AppShell() {
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [onboardingIntroSeen, setOnboardingIntroSeen] = useState(false);
   const [view, setView] = useState("home");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const online = useOnlineStatus();
   const live = useLiveLocation(true);
   const handleUnauthorized = useCallback(async () => {
@@ -2886,7 +2887,7 @@ function AppShell() {
           <div className="header-actions">
             <StatusDot state={online ? "safe" : "watch"} label={online ? "Protection Active" : "Offline Mode"} />
             <button data-testid="header-profile-button" className="icon-button" onClick={() => setView("profile")} title="Safety Profile"><Shield size={18} /></button>
-            <button data-testid="header-menu-button" className="icon-button mobile-only" onClick={() => setView("settings")}><Menu size={18} /></button>
+            <button data-testid="header-menu-button" className="icon-button mobile-only" onClick={() => setMobileMenuOpen(true)} title="All Features & Data"><Menu size={18} /></button>
           </div>
         </header>
 
@@ -2902,17 +2903,137 @@ function AppShell() {
 
       {/* Part 22: Mobile Bottom Navigation */}
       <nav className="bottom-nav" aria-label="Mobile navigation">
-        {PRIMARY_NAV.filter(n => n.id !== "insights").map(({ id, label, mobileLabel, icon: Icon }) => (
-          <button 
-            key={id}
-            data-testid={`mobile-nav-${id}-button`} 
-            className={cx(view === id ? "active" : "", id === "sos" && "mobile-sos-btn", view === "sos" && id === "sos" && "active-sos")} 
-            onClick={() => setView(id)}
-          >
-            <Icon size={id === "sos" ? 20 : 18} /><span>{mobileLabel || label}</span>
-          </button>
-        ))}
+        <button 
+          data-testid="mobile-nav-home-button" 
+          className={cx(view === "home" && "active")} 
+          onClick={() => setView("home")}
+        >
+          <Home size={18} /><span>Home</span>
+        </button>
+        <button 
+          data-testid="mobile-nav-journey-button" 
+          className={cx(view === "journey" && "active")} 
+          onClick={() => setView("journey")}
+        >
+          <Route size={18} /><span>Journey</span>
+        </button>
+        <button 
+          data-testid="mobile-nav-sos-button" 
+          className={cx("mobile-sos-btn", view === "sos" && "active-sos")} 
+          onClick={() => setView("sos")}
+        >
+          <Siren size={20} /><span>SOS</span>
+        </button>
+        <button 
+          data-testid="mobile-nav-profile-button" 
+          className={cx(view === "profile" && "active")} 
+          onClick={() => setView("profile")}
+        >
+          <Shield size={18} /><span>Profile</span>
+        </button>
+        <button 
+          data-testid="mobile-nav-more-button" 
+          className={cx(mobileMenuOpen && "active")} 
+          onClick={() => setMobileMenuOpen(true)}
+        >
+          <Menu size={18} /><span>More</span>
+        </button>
       </nav>
+
+      {/* Mobile Slide-Over Drawer for History & Data Features */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            className="mobile-drawer-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            <motion.div
+              className="mobile-drawer-panel"
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 26, stiffness: 280 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mobile-drawer-header">
+                <div className="brand-mark" style={{ margin: 0 }}>
+                  <ShieldCheck size={24} style={{ color: "#00E6B8" }} />
+                  <span style={{ fontSize: 16 }}>SentinelPulse</span>
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setMobileMenuOpen(false)}
+                  style={{ width: 36, height: 36 }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mobile-drawer-nav">
+                <div className="mobile-drawer-section-title">Core Protection</div>
+                {PRIMARY_NAV.map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    className={cx("mobile-drawer-item", view === id && "active")}
+                    onClick={() => {
+                      setView(id);
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    <Icon size={18} />
+                    <span>{label}</span>
+                  </button>
+                ))}
+
+                <div className="mobile-drawer-section-title">History & Data</div>
+                {SECONDARY_NAV.map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    className={cx("mobile-drawer-item", view === id && "active")}
+                    onClick={() => {
+                      setView(id);
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    <Icon size={18} />
+                    <span>{label}</span>
+                  </button>
+                ))}
+
+                <div className="mobile-drawer-section-title">System & Account</div>
+                <button
+                  className={cx("mobile-drawer-item", view === "settings" && "active")}
+                  onClick={() => {
+                    setView("settings");
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <SlidersHorizontal size={18} />
+                  <span>Settings</span>
+                </button>
+
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                  <PrimaryButton
+                    danger
+                    icon={LogOut}
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      logout();
+                    }}
+                    style={{ width: "100%" }}
+                  >
+                    Sign Out
+                  </PrimaryButton>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Why This Risk Explainability Modal */}
       {whyModalOpen && (

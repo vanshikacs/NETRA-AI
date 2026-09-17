@@ -398,6 +398,79 @@ label { color: var(--sp-fg-muted); font-size: 13px; font-weight: 700; display: g
 
 .offline-banner { position: fixed; left: 50%; transform: translateX(-50%); top: 14px; z-index: 90; min-height: 42px; display: flex; align-items: center; gap: 8px; border-radius: 999px; border: 1px solid rgba(255,184,76,.28); background: rgba(255,184,76,.14); color: #ffe5b4; padding: 0 16px; backdrop-filter: blur(18px); font-size: 12px; }
 
+/* Luxury Mobile Navigation Drawer */
+.mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 7, 14, 0.82);
+  backdrop-filter: blur(16px);
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+}
+.mobile-drawer-panel {
+  width: min(340px, 86vw);
+  height: 100%;
+  background: rgba(11, 18, 32, 0.96);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 20px 100px;
+  overflow-y: auto;
+}
+.mobile-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.mobile-drawer-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mobile-drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--sp-fg-muted);
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.mobile-drawer-item:hover, .mobile-drawer-item.active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--sp-fg);
+}
+.mobile-drawer-item.active {
+  background: rgba(0, 230, 184, 0.12);
+  border-color: rgba(0, 230, 184, 0.3);
+  color: #00E6B8;
+  font-weight: 700;
+}
+.mobile-drawer-item.active svg {
+  color: #00E6B8;
+}
+.mobile-drawer-section-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sp-fg-subtle);
+  margin: 18px 8px 8px;
+}
+
 @keyframes breathe { 0%, 100% { transform: scale(.92); opacity: .5; } 50% { transform: scale(1.08); opacity: 1; } }
 
 @media (max-width: 1120px) {
