@@ -86,7 +86,7 @@ import {
 const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/+$/, "");
 const API = `${BACKEND_URL}/api`;
 const MAP_PROVIDER = process.env.REACT_APP_MAP_PROVIDER || "leaflet_osm";
-const DEFAULT_LOCATION = { lat: 28.6139, lng: 77.209 };
+const DEFAULT_LOCATION = { lat: 26.8467, lng: 80.9462 }; // Hazratganj, Lucknow, UP
 
 // Primary navigation — 6 core screens shown in sidebar and mobile bottom nav
 const PRIMARY_NAV = [
@@ -177,41 +177,26 @@ function useLiveLocation(enabled = true) {
 
   const requestGps = useCallback(() => {
     if (!navigator.geolocation) {
-      // If browser doesn't support geolocation, fallback to IP
-      fetch("https://ipapi.co/json/")
-        .then((r) => r.json())
-        .then((data) => {
-          if (data?.latitude && data?.longitude) {
-            setLocation({ lat: Number(data.latitude), lng: Number(data.longitude) });
-            setAccuracy(1000);
-            setHasRealFix(true);
-          }
-        })
-        .catch(() => {});
+      setError("Geolocation not supported by browser");
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setAccuracy(pos.coords.accuracy);
-        setError("");
-        setHasRealFix(true);
+        const { latitude, longitude, accuracy: acc } = pos.coords;
+        if (latitude && longitude) {
+          setLocation({ lat: latitude, lng: longitude });
+          setAccuracy(acc);
+          setError("");
+          setHasRealFix(true);
+        }
       },
       (err) => {
-        console.warn("GPS error:", err.message, "Falling back to IP geolocation...");
-        fetch("https://ipapi.co/json/")
-          .then((r) => r.json())
-          .then((data) => {
-            if (data?.latitude && data?.longitude) {
-              setLocation({ lat: Number(data.latitude), lng: Number(data.longitude) });
-              setAccuracy(1000);
-              setHasRealFix(true);
-            }
-          })
-          .catch(() => {});
+        console.warn("GPS lookup note:", err.message);
+        setError(err.message || "GPS unavailable");
+        // Maintain clean fallback (Lucknow) without jumping to remote ISP server
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
   }, []);
 
@@ -222,13 +207,17 @@ function useLiveLocation(enabled = true) {
     if (!navigator.geolocation) return undefined;
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setAccuracy(pos.coords.accuracy);
-        setError("");
-        setHasRealFix(true);
+        if (pos.coords.latitude && pos.coords.longitude) {
+          setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setAccuracy(pos.coords.accuracy);
+          setError("");
+          setHasRealFix(true);
+        }
       },
-      (err) => setError(err.message || "Location permission unavailable"),
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+      (err) => {
+        // Passive watch
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 }
     );
     return () => navigator.geolocation.clearWatch(watchId);
   }, [enabled, requestGps]);
@@ -1018,10 +1007,11 @@ function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onS
     if (!elRef.current || mapRef.current) return;
     mapRef.current = L.map(elRef.current, { zoomControl: false, attributionControl: false }).setView([location.lat, location.lng], compact ? 13 : 15);
     
-    // Crisp CartoDB dark-matter tiles with clear road labels — no key required
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    // OpenStreetMap official tiles — 100% free, 0 API key required, 0 watermark
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
-      attribution: "© OpenStreetMap contributors © CARTO",
+      className: "sp-dark-tiles",
+      attribution: "© OpenStreetMap contributors",
     }).addTo(mapRef.current);
     
     L.control.zoom({ position: "bottomright" }).addTo(mapRef.current);
@@ -1074,8 +1064,23 @@ function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onS
   }, [route, activeJourney]);
 
   const recenter = () => {
-    mapRef.current?.flyTo([location.lat, location.lng], 16, { duration: 1.0 });
-    toast.info("Centered to current location");
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const latlng = [pos.coords.latitude, pos.coords.longitude];
+          mapRef.current?.flyTo(latlng, 16, { duration: 1.0 });
+          toast.info("Centered to live GPS location");
+        },
+        () => {
+          mapRef.current?.flyTo([location.lat, location.lng], 16, { duration: 1.0 });
+          toast.info("Centered to current location");
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    } else {
+      mapRef.current?.flyTo([location.lat, location.lng], 16, { duration: 1.0 });
+      toast.info("Centered to current location");
+    }
   };
 
   return (

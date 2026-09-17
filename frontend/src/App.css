@@ -154,7 +154,7 @@ label { color: var(--sp-fg-muted); font-size: 13px; font-weight: 700; display: g
 .map-shell { position: relative; min-height: calc(100vh - 120px); border: 1px solid var(--sp-border); border-radius: 30px; overflow: hidden; background: #07111d; box-shadow: var(--sp-shadow); }
 .map-shell.compact { min-height: 420px; }
 .leaflet-host { height: 100%; min-height: inherit; z-index: 1; }
-.sp-dark-tiles { filter: brightness(0.62) invert(1) contrast(1.25) hue-rotate(185deg) saturate(0.55); }
+.sp-dark-tiles { filter: brightness(0.72) invert(1) contrast(1.35) hue-rotate(195deg) saturate(0.42); }
 .leaflet-control-zoom a { background: rgba(11,18,32,.9) !important; color: var(--sp-fg) !important; border-color: rgba(255,255,255,.1) !important; }
 .map-topbar { position: absolute; left: 16px; top: 16px; right: 16px; z-index: 500; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; }
 .map-controls { position: absolute; z-index: 500; right: 16px; top: 84px; display: grid; gap: 10px; }
