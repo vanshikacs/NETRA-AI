@@ -1009,20 +1009,19 @@ function LiveProtectionScreen({ activeJourney, dashboard, onNavigate, onCheckIn,
 
 // Part 9: Simplified, Understandable Luxury Smart Radar Map (References 1, 2, 3)
 function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onStartJourney, compact = false }) {
-
+  const [legendOpen, setLegendOpen] = useState(false);
   const mapRef = useRef(null);
   const elRef = useRef(null);
   const layersRef = useRef({ user: null, route: null, overlays: [] });
 
   useEffect(() => {
     if (!elRef.current || mapRef.current) return;
-    mapRef.current = L.map(elRef.current, { zoomControl: false, attributionControl: false }).setView([location.lat, location.lng], compact ? 13 : 14);
+    mapRef.current = L.map(elRef.current, { zoomControl: false, attributionControl: false }).setView([location.lat, location.lng], compact ? 13 : 15);
     
-    // OpenStreetMap tiles with dark CSS filter — no API key required
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    // Crisp CartoDB dark-matter tiles with clear road labels — no key required
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 19,
-      attribution: "© OpenStreetMap contributors",
-      className: "dark-map-tiles",
+      attribution: "© OpenStreetMap contributors © CARTO",
     }).addTo(mapRef.current);
     
     L.control.zoom({ position: "bottomright" }).addTo(mapRef.current);
@@ -1103,17 +1102,49 @@ function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onS
         </div>
       )}
 
-      {/* Clear Visual Map Legend */}
-      <div className="map-guidance-card glass-card">
-        <h4>Map Legend</h4>
-        <div className="guidance-row"><span className="legend-dot green" /><span>Teal dot: Your location</span></div>
-        <div className="guidance-row"><span className="legend-dot blue" /><span>Teal path: Recommended safe corridor</span></div>
-        <div className="guidance-row"><span className="legend-dot amber" /><span>Amber zone: Caution context</span></div>
-        <div className="guidance-row"><span className="legend-dot red" /><span>Red zone: Elevated-risk context</span></div>
-        <div className="guidance-tip">
-          <Info size={13} />
-          <span>OSM tiles · Local deterministic risk weights.</span>
-        </div>
+      {/* Discreet Collapsible Map Legend Button — Never Blocks Map */}
+      <div style={{ position: "absolute", bottom: 14, left: 14, zIndex: 500 }}>
+        {!legendOpen ? (
+          <button
+            type="button"
+            onClick={() => setLegendOpen(true)}
+            style={{
+              background: "rgba(11,18,32,0.88)",
+              border: "1px solid rgba(255,255,255,0.18)",
+              color: "var(--sp-fg-muted)",
+              borderRadius: 999,
+              padding: "6px 12px",
+              fontSize: 11,
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              backdropFilter: "blur(14px)",
+              cursor: "pointer",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.4)"
+            }}
+          >
+            <Info size={13} style={{ color: "#00E6B8" }} />
+            Map Legend
+          </button>
+        ) : (
+          <div className="map-guidance-card glass-card" style={{ width: 240, padding: 12, margin: 0, borderRadius: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <strong style={{ fontSize: 12, color: "var(--sp-fg)" }}>Map Legend</strong>
+              <button
+                type="button"
+                onClick={() => setLegendOpen(false)}
+                style={{ background: "transparent", border: 0, color: "var(--sp-fg-muted)", cursor: "pointer", padding: 2 }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="guidance-row"><span className="legend-dot green" /><span>Teal dot: Your location</span></div>
+            <div className="guidance-row"><span className="legend-dot blue" /><span>Teal path: Safe route</span></div>
+            <div className="guidance-row"><span className="legend-dot amber" /><span>Amber: Caution context</span></div>
+            <div className="guidance-row"><span className="legend-dot red" /><span>Red: Elevated risk</span></div>
+          </div>
+        )}
       </div>
 
       <div className="map-controls">

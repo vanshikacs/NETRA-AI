@@ -460,7 +460,7 @@ label { color: var(--sp-fg-muted); font-size: 13px; font-weight: 700; display: g
   .auth-shell { padding: 16px; }
   .auth-hero h1 { font-size: 36px; }
   .input-grid, .countdown-zone { grid-template-columns: 1fr; }
-  .map-shell { min-height: 65vh; border-radius: 20px; }
+  .map-shell { min-height: 480px; height: 60vh; border-radius: 20px; width: 100%; }
   .journey-sheet, .map-topbar { left: 10px; right: 10px; }
   .journey-sheet { align-items: stretch; flex-direction: column; }
   .tool-grid { grid-template-columns: 1fr; }
