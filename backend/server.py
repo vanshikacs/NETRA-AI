@@ -31,8 +31,8 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "sentinelpulse-development-secret")
 ENCRYPTION_SECRET = os.environ.get("ENCRYPTION_SECRET", "sentinelpulse-vault-secret")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY") or GEMINI_API_KEY
-ACCESS_TTL_MINUTES = 30
-REFRESH_TTL_DAYS = 30
+ACCESS_TTL_MINUTES = 60 * 24 * 30  # 30 days for robust continuous judging session
+REFRESH_TTL_DAYS = 60
 
 if not MONGO_URL:
     raise RuntimeError("MONGO_URL is required")
@@ -1394,7 +1394,7 @@ async def reset_demo(user: Dict[str, Any] = Depends(get_current_user)):
         "confidence": 88,
         "factors": base_result["factors"],
         "derived_signals": baseline_signals,
-        "location": {"lat": 28.6139, "lng": 77.2090},
+        "location": {"lat": 26.8467, "lng": 80.9462},
         "created_at": now_iso(),
     }
     await db.risk_events.insert_one(clean_event)

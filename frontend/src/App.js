@@ -225,12 +225,45 @@ function useLiveLocation(enabled = true) {
   return { location, setLocation, accuracy, error, hasRealFix, requestGps };
 }
 
-function apiWithToken(token) {
+function apiWithToken(token, onUnauthorized) {
+  const requestWithAuth = async (method, url, dataOrConfig, maybeConfig) => {
+    const config = method === "get" || method === "delete" ? (dataOrConfig || {}) : (maybeConfig || {});
+    const headers = { ...(config.headers || {}), Authorization: `Bearer ${token}` };
+    try {
+      if (method === "get") return await api.get(url, { ...config, headers });
+      if (method === "delete") return await api.delete(url, { ...config, headers });
+      if (method === "post") return await api.post(url, dataOrConfig, { ...config, headers });
+      if (method === "put") return await api.put(url, dataOrConfig, { ...config, headers });
+    } catch (err) {
+      if (err.response?.status === 401) {
+        const storedRefresh = localStorage.getItem("sp_refresh_token");
+        if (storedRefresh) {
+          try {
+            const refreshRes = await api.post("/auth/refresh", { refresh_token: storedRefresh });
+            if (refreshRes.data?.access_token) {
+              localStorage.setItem("sp_access_token", refreshRes.data.access_token);
+              const retryHeaders = { ...(config.headers || {}), Authorization: `Bearer ${refreshRes.data.access_token}` };
+              if (method === "get") return await api.get(url, { ...config, headers: retryHeaders });
+              if (method === "delete") return await api.delete(url, { ...config, headers: retryHeaders });
+              if (method === "post") return await api.post(url, dataOrConfig, { ...config, headers: retryHeaders });
+              if (method === "put") return await api.put(url, dataOrConfig, { ...config, headers: retryHeaders });
+            }
+          } catch {
+            if (onUnauthorized) onUnauthorized();
+          }
+        } else if (onUnauthorized) {
+          onUnauthorized();
+        }
+      }
+      throw err;
+    }
+  };
+
   return {
-    get: (url, config = {}) => api.get(url, { ...config, headers: { ...(config.headers || {}), Authorization: `Bearer ${token}` } }),
-    post: (url, data, config = {}) => api.post(url, data, { ...config, headers: { ...(config.headers || {}), Authorization: `Bearer ${token}` } }),
-    put: (url, data, config = {}) => api.put(url, data, { ...config, headers: { ...(config.headers || {}), Authorization: `Bearer ${token}` } }),
-    delete: (url, config = {}) => api.delete(url, { ...config, headers: { ...(config.headers || {}), Authorization: `Bearer ${token}` } }),
+    get: (url, config) => requestWithAuth("get", url, config),
+    post: (url, data, config) => requestWithAuth("post", url, data, config),
+    put: (url, data, config) => requestWithAuth("put", url, data, config),
+    delete: (url, config) => requestWithAuth("delete", url, config),
   };
 }
 
@@ -1351,10 +1384,20 @@ function LocationContextLayer({ location, destinationName, activeJourney }) {
 
 // Part 10: Smart Journey Screen with Interactive Check-In & Intervention Ladder
 function JourneyScreen({ authed, location, setLocation, activeJourney, setActiveJourney, overlays, refreshAll, onOpenWhy }) {
-  const [destination, setDestination] = useState({ name: "University Campus to Home", lat: location.lat + 0.015, lng: location.lng + 0.018 });
+  const [destination, setDestination] = useState({ name: "Hazratganj to Gomti Nagar", lat: location.lat + 0.012, lng: location.lng + 0.015 });
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [completedSummary, setCompletedSummary] = useState(null);
+
+  useEffect(() => {
+    if (location?.lat && location?.lng) {
+      setDestination((prev) => ({
+        ...prev,
+        lat: location.lat + 0.012,
+        lng: location.lng + 0.015,
+      }));
+    }
+  }, [location?.lat, location?.lng]);
 
   const journeyState = activeJourney ? (activeJourney.emergency_state || "MONITORING") : "IDLE";
   const riskScore = activeJourney?.latest_risk?.score || 12;
@@ -2220,7 +2263,19 @@ function AppShell() {
   const [view, setView] = useState("home");
   const online = useOnlineStatus();
   const live = useLiveLocation(true);
-  const authed = useMemo(() => apiWithToken(token), [token]);
+  const handleUnauthorized = useCallback(async () => {
+    try {
+      const res = await api.post("/auth/demo-login");
+      if (res.data?.access_token) {
+        saveAuth(res.data);
+        setUser(res.data.user);
+      }
+    } catch {
+      logout();
+    }
+  }, [logout, saveAuth]);
+
+  const authed = useMemo(() => apiWithToken(token, handleUnauthorized), [token, handleUnauthorized]);
 
   const [dashboard, setDashboard] = useState(null);
   const [safetyProfile, setSafetyProfile] = useState(null);
