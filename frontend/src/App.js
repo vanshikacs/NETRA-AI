@@ -415,141 +415,366 @@ function WhyThisRiskModal({ risk, onClose, onCheckIn, onSOS }) {
   );
 }
 
-// Progressive Escalation Ladder (References User Safety Philosophy):
-// Low (0-29): 'Everything looks normal.'
-// Medium (30-59): 'Something is unusual. Please check in.'
-// High (60-100): 'Multiple signals are becoming concerning. Here are your options.'
-// SOS: Direct user action
-function ProgressiveEscalationPrompt({ riskScore = 12, onCheckIn, onSOS, onOpenWhy, authed, onContactsAlerted }) {
-  const [alertingContacts, setAlertingContacts] = useState(false);
+// Part 11: Conservative High-Risk Confirmation Modal
+// Principle: Observe silently -> confirm sustained meaningful deviation -> ask once -> 30s countdown -> escalate only if necessary
+function HighRiskCheckinModal({
+  deadline,
+  reasons = ["Route deviation", "Unexpected stop", "Journey duration overrun"],
+  onSafeConfirm,
+  onNeedHelp,
+  onSOS,
+}) {
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    deadline ? Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) : 30
+  );
+  const [isHoldingSOS, setIsHoldingSOS] = useState(false);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const holdIntervalRef = useRef(null);
 
-  if (riskScore < 30) {
-    return null; // Low: Silent baseline monitoring
-  }
+  useEffect(() => {
+    if (!deadline) return;
+    const update = () => {
+      const rem = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setSecondsLeft(rem);
+      if (rem <= 0) {
+        onNeedHelp?.(true); // Timed out -> auto-progress to Primary Contact
+      }
+    };
+    update();
+    const timer = setInterval(update, 500);
+    return () => clearInterval(timer);
+  }, [deadline, onNeedHelp]);
 
-  const isHigh = riskScore >= 60;
+  // Hold SOS for 1.5 seconds
+  const startHoldingSOS = () => {
+    setIsHoldingSOS(true);
+    setHoldProgress(0);
+    const start = Date.now();
+    holdIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(100, (elapsed / 1500) * 100);
+      setHoldProgress(progress);
+      if (progress >= 100) {
+        clearInterval(holdIntervalRef.current);
+        setIsHoldingSOS(false);
+        onSOS();
+      }
+    }, 30);
+  };
 
-  const handleAlertContacts = async () => {
-    setAlertingContacts(true);
-    try {
-      if (authed) await authed.post("/contacts/alert", {});
-      toast.success("Trusted Circle alerted with live coordinates and signal status");
-      onContactsAlerted?.();
-    } catch {
-      toast.success("Trusted Circle alerted");
-    } finally {
-      setAlertingContacts(false);
-    }
+  const cancelHoldingSOS = () => {
+    if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
+    setIsHoldingSOS(false);
+    setHoldProgress(0);
   };
 
   return (
-    <div
-      className={cx("glass-card progressive-escalation-card wide", isHigh ? "danger" : "watch")}
-      data-testid="progressive-escalation-prompt"
-      style={{
-        border: `1.5px solid ${isHigh ? "#FF4E5F" : "#FFB84C"}`,
-        background: isHigh ? "rgba(255, 78, 95, 0.12)" : "rgba(255, 184, 76, 0.10)",
-        borderRadius: 18,
-        padding: "16px 18px",
-        margin: "14px 0",
-        backdropFilter: "blur(20px)",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
-        <div style={{
-          width: 38,
-          height: 38,
-          borderRadius: 12,
-          background: isHigh ? "rgba(255,78,95,0.22)" : "rgba(255,184,76,0.22)",
-          border: `1px solid ${isHigh ? "rgba(255,78,95,0.4)" : "rgba(255,184,76,0.4)"}`,
-          display: "grid",
-          placeItems: "center",
-          flexShrink: 0
-        }}>
-          {isHigh ? <ShieldAlert size={20} style={{ color: "#FF4E5F" }} /> : <AlertTriangle size={20} style={{ color: "#FFB84C" }} />}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
-            <strong style={{ fontSize: 15, color: isHigh ? "#FF4E5F" : "#FFB84C" }}>
-              {isHigh ? "High Concern Detected" : "Something is Unusual"}
-            </strong>
-            <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: isHigh ? "rgba(255,78,95,0.25)" : "rgba(255,184,76,0.25)", color: isHigh ? "#ffd5da" : "#ffe5b4" }}>
-              {isHigh ? `HIGH RISK · ${riskScore}/100` : `MEDIUM RISK · ${riskScore}/100`}
+    <div className="modal-backdrop high-risk-checkin-backdrop" data-testid="high-risk-checkin-modal" style={{ zIndex: 1000 }}>
+      <motion.div
+        className="glass-card high-risk-checkin-card"
+        initial={{ opacity: 0, scale: 0.94, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.94, y: 15 }}
+        style={{
+          maxWidth: 480,
+          width: "92%",
+          padding: "24px 22px",
+          border: "2px solid rgba(255, 78, 95, 0.6)",
+          background: "rgba(18, 12, 24, 0.96)",
+          boxShadow: "0 16px 48px rgba(255, 78, 95, 0.28)",
+          borderRadius: 22,
+          backdropFilter: "blur(24px)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{
+              background: "#FF4E5F",
+              color: "#fff",
+              padding: "4px 12px",
+              borderRadius: 999,
+              fontSize: 11,
+              fontWeight: 900,
+              letterSpacing: "0.06em",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4
+            }}>
+              <ShieldAlert size={14} /> HIGH RISK
             </span>
           </div>
-          <p style={{ fontSize: 13, color: "var(--sp-fg)", margin: 0, lineHeight: 1.45 }}>
-            {isHigh
-              ? "Multiple signals are becoming concerning. Here are your options:"
-              : "Something is unusual. Please check in."}
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#FFB84C", fontSize: 13, fontWeight: 700 }}>
+            <Clock size={15} />
+            <span>{secondsLeft}s remaining</span>
+          </div>
         </div>
-      </div>
 
-      <div className="button-row" style={{ marginTop: 0, gap: 10, display: "flex", flexWrap: "wrap" }}>
-        {/* Option 1: I'm Safe */}
-        <PrimaryButton
-          testId="progressive-im-safe-btn"
-          icon={Check}
-          onClick={onCheckIn}
-          style={{ flex: 1, minWidth: 120 }}
-        >
-          I'm Safe
-        </PrimaryButton>
+        <h3 style={{ fontSize: 18, color: "#fff", margin: "0 0 10px", lineHeight: 1.35 }}>
+          Your journey looks significantly different from your usual pattern.
+        </h3>
 
-        {/* Option 2: Notify Trusted Circle (High Risk Option) */}
-        {isHigh && (
+        <div style={{ background: "rgba(255, 255, 255, 0.05)", borderRadius: 12, padding: "12px 14px", marginBottom: 16 }}>
+          <strong style={{ fontSize: 11, letterSpacing: "0.05em", color: "var(--sp-fg-muted)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+            Why we're checking:
+          </strong>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "#cbd5e1", lineHeight: 1.6 }}>
+            {reasons.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+        </div>
+
+        <p style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: "0 0 14px", textAlign: "center" }}>
+          Are you safe?
+        </p>
+
+        {/* 30s Countdown progress bar */}
+        <div style={{ height: 4, background: "rgba(255,255,255,0.1)", borderRadius: 999, marginBottom: 18, overflow: "hidden" }}>
+          <div style={{
+            height: "100%",
+            width: `${(secondsLeft / 30) * 100}%`,
+            background: secondsLeft > 10 ? "linear-gradient(90deg, #FFB84C, #FF4E5F)" : "#FF4E5F",
+            transition: "width 0.5s linear"
+          }} />
+        </div>
+
+        {/* 3 Action Buttons */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <PrimaryButton
-            testId="progressive-alert-contacts-btn"
-            secondary
-            icon={Users}
-            onClick={handleAlertContacts}
-            disabled={alertingContacts}
-            style={{ flex: 1, minWidth: 160, borderColor: "rgba(255,184,76,0.4)", color: "#FFB84C" }}
+            testId="escalation-im-safe-btn"
+            icon={Check}
+            onClick={onSafeConfirm}
+            style={{ width: "100%", minHeight: 46, fontSize: 14, background: "linear-gradient(135deg, #00E6B8, #00D26A)", color: "#0B1220", fontWeight: 800 }}
           >
-            {alertingContacts ? "Alerting Circle..." : "Notify Trusted Circle"}
+            I'm Safe
           </PrimaryButton>
-        )}
 
-        {/* Option 3: Trigger SOS (High Risk Option) */}
-        {isHigh && (
-          <PrimaryButton
-            testId="progressive-trigger-sos-btn"
-            danger
-            icon={Siren}
-            onClick={onSOS}
-            style={{ flex: 1, minWidth: 130 }}
-          >
-            Trigger SOS
-          </PrimaryButton>
-        )}
+          <div style={{ display: "flex", gap: 10 }}>
+            <PrimaryButton
+              testId="escalation-need-help-btn"
+              secondary
+              icon={Users}
+              onClick={() => onNeedHelp(false)}
+              style={{ flex: 1, minHeight: 44, fontSize: 13, borderColor: "rgba(255,184,76,0.5)", color: "#FFB84C" }}
+            >
+              Need Help
+            </PrimaryButton>
 
-        {/* Option 4: View Why */}
-        <PrimaryButton
-          testId="progressive-view-why-btn"
-          secondary
-          icon={Eye}
-          onClick={onOpenWhy}
-          style={{ minWidth: 100 }}
-        >
-          Why?
-        </PrimaryButton>
-      </div>
+            <button
+              type="button"
+              data-testid="escalation-hold-sos-btn"
+              onMouseDown={startHoldingSOS}
+              onMouseUp={cancelHoldingSOS}
+              onMouseLeave={cancelHoldingSOS}
+              onTouchStart={startHoldingSOS}
+              onTouchEnd={cancelHoldingSOS}
+              style={{
+                flex: 1,
+                minHeight: 44,
+                borderRadius: 14,
+                border: "1.5px solid #FF4E5F",
+                background: "rgba(255, 78, 95, 0.18)",
+                color: "#FF4E5F",
+                fontWeight: 800,
+                fontSize: 13,
+                cursor: "pointer",
+                position: "relative",
+                overflow: "hidden",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6
+              }}
+            >
+              <div style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: `${holdProgress}%`,
+                background: "rgba(255, 78, 95, 0.45)",
+                transition: "width 0.05s linear",
+                pointerEvents: "none"
+              }} />
+              <Siren size={16} />
+              <span style={{ position: "relative", zIndex: 2 }}>
+                {isHoldingSOS ? `Hold (${Math.round(holdProgress)}%)` : "Hold SOS (1.5s)"}
+              </span>
+            </button>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
 
-// Part 12: Discreet Demo Controls — floating toggle, hidden by default
+// Contact Escalation Tracking Card (Primary Alerted -> 60s Ack -> Secondary Alerted)
+function ContactEscalationCard({
+  status,
+  primaryContact,
+  secondaryContact,
+  ackDeadline,
+  onSimulateAck,
+  onAckTimeout,
+  onDismiss,
+  onSafeConfirm,
+}) {
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    ackDeadline ? Math.max(0, Math.ceil((ackDeadline - Date.now()) / 1000)) : 0
+  );
+
+  useEffect(() => {
+    if (!ackDeadline || status !== "PRIMARY_ALERTED") return;
+    const update = () => {
+      const rem = Math.max(0, Math.ceil((ackDeadline - Date.now()) / 1000));
+      setSecondsLeft(rem);
+      if (rem <= 0) {
+        onAckTimeout?.();
+      }
+    };
+    update();
+    const t = setInterval(update, 500);
+    return () => clearInterval(t);
+  }, [ackDeadline, status, onAckTimeout]);
+
+  if (!["PRIMARY_ALERTED", "PRIMARY_ACKNOWLEDGED", "SECONDARY_ALERTED"].includes(status)) {
+    return null;
+  }
+
+  const pName = primaryContact?.name || "Primary Contact";
+  const sName = secondaryContact?.name || "Secondary Contact";
+
+  return (
+    <motion.div
+      className={cx("glass-card contact-escalation-card wide", status.toLowerCase())}
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      data-testid="contact-escalation-banner"
+      style={{
+        border: `1.5px solid ${status === "PRIMARY_ACKNOWLEDGED" ? "#00E6B8" : status === "SECONDARY_ALERTED" ? "#FF8C00" : "#FFB84C"}`,
+        background: status === "PRIMARY_ACKNOWLEDGED" ? "rgba(0, 230, 184, 0.12)" : "rgba(255, 184, 76, 0.12)",
+        borderRadius: 16,
+        padding: "14px 16px",
+        margin: "12px 0",
+        backdropFilter: "blur(20px)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            background: status === "PRIMARY_ACKNOWLEDGED" ? "rgba(0,230,184,0.2)" : "rgba(255,184,76,0.2)",
+            display: "grid",
+            placeItems: "center",
+            flexShrink: 0
+          }}>
+            {status === "PRIMARY_ACKNOWLEDGED" ? <CheckCircle size={18} style={{ color: "#00E6B8" }} /> : <Bell size={18} style={{ color: "#FFB84C" }} />}
+          </div>
+          <div>
+            <strong style={{ fontSize: 14, color: status === "PRIMARY_ACKNOWLEDGED" ? "#00E6B8" : "#fff", display: "block" }}>
+              {status === "PRIMARY_ALERTED" && `Primary Contact Alerted (${pName})`}
+              {status === "PRIMARY_ACKNOWLEDGED" && `Primary Contact Acknowledged`}
+              {status === "SECONDARY_ALERTED" && `Secondary Contact Alerted (${sName})`}
+            </strong>
+            <small style={{ color: "var(--sp-fg-muted)", fontSize: 12 }}>
+              {status === "PRIMARY_ALERTED" && `Waiting for acknowledgement... (${secondsLeft}s window)`}
+              {status === "PRIMARY_ACKNOWLEDGED" && `${pName} confirmed receipt. Automatic escalation stopped.`}
+              {status === "SECONDARY_ALERTED" && `No acknowledgement from ${pName} within 60s. ${sName} alerted.`}
+            </small>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {status === "PRIMARY_ALERTED" && (
+            <>
+              <button
+                type="button"
+                className="sp-button secondary"
+                data-testid="simulate-primary-ack-btn"
+                onClick={onSimulateAck}
+                style={{ fontSize: 11, padding: "6px 12px", minHeight: 32, borderColor: "rgba(0,230,184,0.4)", color: "#00E6B8" }}
+              >
+                Simulate Ack
+              </button>
+              <button
+                type="button"
+                className="sp-button"
+                onClick={onSafeConfirm}
+                style={{ fontSize: 11, padding: "6px 12px", minHeight: 32, background: "rgba(0,230,184,0.15)", color: "#00E6B8" }}
+              >
+                I'm Safe Now
+              </button>
+            </>
+          )}
+
+          {(status === "PRIMARY_ACKNOWLEDGED" || status === "SECONDARY_ALERTED") && (
+            <button
+              type="button"
+              className="sp-button secondary"
+              onClick={onDismiss}
+              style={{ fontSize: 11, padding: "6px 12px", minHeight: 32 }}
+            >
+              Dismiss
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// Safe Confirmation Cooldown Badge
+function SafeCooldownBadge({ cooldownUntil }) {
+  const [remMin, setRemMin] = useState(() =>
+    cooldownUntil ? Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 60000)) : 0
+  );
+
+  useEffect(() => {
+    if (!cooldownUntil) return;
+    const update = () => {
+      const m = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 60000));
+      setRemMin(m);
+    };
+    update();
+    const t = setInterval(update, 3000);
+    return () => clearInterval(t);
+  }, [cooldownUntil]);
+
+  if (!remMin || remMin <= 0) return null;
+
+  return (
+    <div style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      background: "rgba(0,230,184,0.12)",
+      border: "1px solid rgba(0,230,184,0.3)",
+      borderRadius: 999,
+      padding: "4px 10px",
+      fontSize: 11,
+      color: "#00E6B8",
+      fontWeight: 700,
+      margin: "8px 0"
+    }} data-testid="safe-cooldown-badge">
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#00E6B8", display: "inline-block" }} />
+      <span>Safe Confirmation Cooldown ({remMin}m) · Passive Monitoring Only</span>
+    </div>
+  );
+}
+
+// Part 12: Discreet Demo Controls — conservative escalation demo cases
 function DemoToolbar({ onSimulate, onReset, activeScenario, loading }) {
   const [open, setOpen] = useState(false);
   const scenarios = [
-    { id: "normal_journey",   label: "1. Normal Journey (12)" },
-    { id: "route_deviation",  label: "2. Route Deviation (+25)" },
-    { id: "prolonged_stop",   label: "3. Prolonged Stop (+18)" },
-    { id: "unusual_duration", label: "4. Unusual Duration (+16)" },
-    { id: "elevated_risk",    label: "5. Elevated Risk (74)" },
-    { id: "high_risk",        label: "6. High Risk (86)" },
-    { id: "safe_checkin",     label: "7. Safe Check-In" },
-    { id: "sos",              label: "8. SOS Trigger" },
+    { id: "route_deviation",  label: "1. Minor Deviation (Silent 48)" },
+    { id: "high_risk",        label: "2. Compound High Risk (Sustained 78)" },
+    { id: "safe_checkin",     label: "3. Safe Confirmation (5m Cooldown)" },
+    { id: "elevated_risk",    label: "4. User Requests Help (Immediate)" },
+    { id: "sos",              label: "5. Manual SOS Trigger (Hold 1.5s)" },
+    { id: "normal_journey",   label: "6. Normal Journey Baseline (12)" },
   ];
 
   return (
@@ -573,10 +798,10 @@ function DemoToolbar({ onSimulate, onReset, activeScenario, loading }) {
       {/* Expandable scenario drawer */}
       {open && (
         <div className="demo-bar" data-testid="demo-mode-toolbar"
-          style={{ position: "fixed", bottom: 120, right: 18, zIndex: 199, width: 260 }}>
+          style={{ position: "fixed", bottom: 120, right: 18, zIndex: 199, width: 280 }}>
           <div className="demo-label-wrap">
-            <span className="demo-badge">Demo Mode · Simulated journey</span>
-            <small>Feeds real risk engine</small>
+            <span className="demo-badge">Demo Mode · Conservative Escalation</span>
+            <small>Observe silently → ask once → human-led</small>
           </div>
           <div className="demo-btn-group">
             {scenarios.map((s) => (
@@ -592,7 +817,7 @@ function DemoToolbar({ onSimulate, onReset, activeScenario, loading }) {
             ))}
             <button data-testid="demo-reset-button" className="demo-btn reset" onClick={() => { onReset(); setOpen(false); }} disabled={loading}>
               <RotateCcw size={13} style={{ display: "inline", marginRight: 4, verticalAlign: "middle" }} />
-              9. Reset Baseline
+              Reset Demo Baseline
             </button>
           </div>
         </div>
@@ -873,10 +1098,30 @@ function AuthScreen({ onAuth, isRegister: initialRegister = false, onBackToWelco
 }
 
 // Part 8: Home Dashboard — Calm, Premium, Safety-First
-function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoading, onOpenWhy, onCheckIn, user, authed }) {
+function HomeDashboard({
+  data,
+  onNavigate,
+  onSOS,
+  onRiskScan,
+  insight,
+  riskLoading,
+  onOpenWhy,
+  onCheckIn,
+  user,
+  authed,
+  escalationStatus,
+  primaryContact,
+  secondaryContact,
+  ackDeadline,
+  cooldownUntil,
+  onSimulateAck,
+  onAckTimeout,
+  onDismissEscalation,
+  onSafeConfirm,
+}) {
   const safety = data?.safety_score ?? 88;
   const riskScore = data?.risk_score ?? (100 - safety);
-  const riskLevel = data?.risk_level || (riskScore < 30 ? "LOW" : riskScore < 60 ? "MODERATE" : riskScore < 80 ? "ELEVATED" : "HIGH");
+  const riskLevel = data?.risk_level || (riskScore < 35 ? "LOW" : riskScore < 65 ? "MODERATE" : riskScore < 85 ? "HIGH" : "CRITICAL");
   const factors = data?.latest_risk?.factors || [];
   const trend = data?.risk_trend?.length ? data.risk_trend : [{ time: "now", score: 12 }];
   const userName = user?.name?.split(" ")?.[0] || "there";
@@ -909,7 +1154,7 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
               <small style={{ color: "var(--sp-fg-muted)", fontSize: 12 }}>Personalized baseline monitoring · Edge-first processing</small>
             </div>
           </div>
-          <IconBadge icon={BrainCircuit} tone={riskScore >= 70 ? "danger" : riskScore >= 45 ? "warning" : "teal"}>
+          <IconBadge icon={BrainCircuit} tone={riskScore >= 65 ? "danger" : riskScore >= 35 ? "warning" : "teal"}>
             {riskLevel} · {riskScore}/100
           </IconBadge>
         </div>
@@ -918,13 +1163,13 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
         <div style={{ marginBottom: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontSize: 12, color: "var(--sp-fg-muted)", fontWeight: 700 }}>SAFETY SCORE</span>
-            <span style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.04em", color: safety > 75 ? "#00D26A" : safety > 50 ? "#FFB84C" : "#FF4E5F" }}>{safety}</span>
+            <span style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.04em", color: safety > 65 ? "#00D26A" : safety > 35 ? "#FFB84C" : "#FF4E5F" }}>{safety}</span>
           </div>
           <div style={{ height: 8, borderRadius: 999, background: "rgba(255,255,255,0.08)", position: "relative", overflow: "hidden" }}>
-            <div style={{ position: "absolute", inset: 0, width: `${Math.min(100, safety)}%`, borderRadius: 999, background: safety > 75 ? "linear-gradient(90deg, #00E6B8, #00D26A)" : safety > 50 ? "#FFB84C" : "#FF4E5F", transition: "width 0.6s ease" }} />
+            <div style={{ position: "absolute", inset: 0, width: `${Math.min(100, safety)}%`, borderRadius: 999, background: safety > 65 ? "linear-gradient(90deg, #00E6B8, #00D26A)" : safety > 35 ? "#FFB84C" : "#FF4E5F", transition: "width 0.6s ease" }} />
           </div>
           <small style={{ display: "block", marginTop: 6, color: "var(--sp-fg-subtle)", fontSize: 11 }}>
-            Signal confidence: {data?.latest_risk?.confidence_label || (safety > 75 ? "High" : "Moderate")} · Calibrated continuously against your personalized baseline
+            Signal confidence: {data?.latest_risk?.confidence_label || (safety > 65 ? "High" : "Moderate")} · Calibrated continuously against your personalized baseline
           </small>
         </div>
 
@@ -970,14 +1215,19 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
 
       </GlassCard>
 
-      {/* Progressive Escalation Ladder (Low: normal / Medium: check-in / High: options / SOS: user action) */}
-      <ProgressiveEscalationPrompt
-        riskScore={riskScore}
-        onCheckIn={onCheckIn}
-        onSOS={onSOS}
-        onOpenWhy={onOpenWhy}
-        authed={authed}
-        onContactsAlerted={onCheckIn}
+      {/* Safe Confirmation Cooldown Badge (When in 5m Cooldown) */}
+      <SafeCooldownBadge cooldownUntil={cooldownUntil} />
+
+      {/* Contact Escalation Alert Card (When Primary / Secondary Alerted) */}
+      <ContactEscalationCard
+        status={escalationStatus}
+        primaryContact={primaryContact}
+        secondaryContact={secondaryContact}
+        ackDeadline={ackDeadline}
+        onSimulateAck={onSimulateAck}
+        onAckTimeout={onAckTimeout}
+        onDismiss={onDismissEscalation}
+        onSafeConfirm={onSafeConfirm}
       />
 
       {/* Protection Status */}
@@ -1052,7 +1302,24 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
 }
 
 // Change 5: Live Protection Screen — shows active journey monitoring or idle state
-function LiveProtectionScreen({ activeJourney, dashboard, onNavigate, onCheckIn, onSOS, onOpenWhy, authed }) {
+function LiveProtectionScreen({
+  activeJourney,
+  dashboard,
+  onNavigate,
+  onCheckIn,
+  onSOS,
+  onOpenWhy,
+  authed,
+  escalationStatus,
+  primaryContact,
+  secondaryContact,
+  ackDeadline,
+  cooldownUntil,
+  onSimulateAck,
+  onAckTimeout,
+  onDismissEscalation,
+  onSafeConfirm,
+}) {
   const riskScore = dashboard?.risk_score || 12;
   const riskLevel = dashboard?.risk_level || "LOW";
   const safety = dashboard?.safety_score || 88;
@@ -1102,7 +1369,7 @@ function LiveProtectionScreen({ activeJourney, dashboard, onNavigate, onCheckIn,
               </small>
             </div>
           </div>
-          <IconBadge icon={Activity} tone={riskScore >= 75 ? "danger" : riskScore >= 45 ? "warning" : "teal"}>
+          <IconBadge icon={Activity} tone={riskScore >= 65 ? "danger" : riskScore >= 35 ? "warning" : "teal"}>
             Risk {riskScore}/100
           </IconBadge>
         </div>
@@ -1136,14 +1403,19 @@ function LiveProtectionScreen({ activeJourney, dashboard, onNavigate, onCheckIn,
           )}
         </div>
 
-        {/* Progressive Escalation Ladder */}
-        <ProgressiveEscalationPrompt
-          riskScore={riskScore}
-          onCheckIn={onCheckIn}
-          onSOS={onSOS}
-          onOpenWhy={onOpenWhy}
-          authed={authed}
-          onContactsAlerted={onCheckIn}
+        {/* Safe Cooldown Badge */}
+        <SafeCooldownBadge cooldownUntil={cooldownUntil} />
+
+        {/* Contact Escalation Alert Card */}
+        <ContactEscalationCard
+          status={escalationStatus}
+          primaryContact={primaryContact}
+          secondaryContact={secondaryContact}
+          ackDeadline={ackDeadline}
+          onSimulateAck={onSimulateAck}
+          onAckTimeout={onAckTimeout}
+          onDismiss={onDismissEscalation}
+          onSafeConfirm={onSafeConfirm}
         />
 
         <div className="button-row">
@@ -1531,7 +1803,28 @@ function LocationContextLayer({ location, destinationName, activeJourney }) {
 }
 
 // Part 10: Smart Journey Screen with Interactive Check-In & Intervention Ladder
-function JourneyScreen({ authed, location, setLocation, activeJourney, setActiveJourney, overlays, refreshAll, onOpenWhy, onRequestGps, isLocating, accuracy }) {
+function JourneyScreen({
+  authed,
+  location,
+  setLocation,
+  activeJourney,
+  setActiveJourney,
+  overlays,
+  refreshAll,
+  onOpenWhy,
+  onRequestGps,
+  isLocating,
+  accuracy,
+  escalationStatus,
+  primaryContact,
+  secondaryContact,
+  ackDeadline,
+  cooldownUntil,
+  onSimulateAck,
+  onAckTimeout,
+  onDismissEscalation,
+  onSafeConfirm,
+}) {
   const [destination, setDestination] = useState({ name: "Hazratganj to Gomti Nagar", lat: location.lat + 0.012, lng: location.lng + 0.015 });
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
@@ -1644,23 +1937,26 @@ function JourneyScreen({ authed, location, setLocation, activeJourney, setActive
               </div>
               <div>
                 <small>Current Risk</small>
-                <strong style={{ color: riskScore > 60 ? "var(--sp-danger)" : "var(--sp-primary)" }}>{riskScore}/100</strong>
+                <strong style={{ color: riskScore > 65 ? "var(--sp-danger)" : "var(--sp-primary)" }}>{riskScore}/100</strong>
               </div>
             </div>
           </GlassCard>
         )}
 
-        {/* Part 10 & Part 11: Progressive Escalation Ladder */}
-        {activeJourney && (
-          <ProgressiveEscalationPrompt
-            riskScore={riskScore}
-            onCheckIn={checkIn}
-            onSOS={() => window.dispatchEvent(new CustomEvent("sp:navigate", { detail: "sos" }))}
-            onOpenWhy={onOpenWhy}
-            authed={authed}
-            onContactsAlerted={refreshAll}
-          />
-        )}
+        {/* Safe Cooldown Badge */}
+        <SafeCooldownBadge cooldownUntil={cooldownUntil} />
+
+        {/* Contact Escalation Alert Card */}
+        <ContactEscalationCard
+          status={escalationStatus}
+          primaryContact={primaryContact}
+          secondaryContact={secondaryContact}
+          ackDeadline={ackDeadline}
+          onSimulateAck={onSimulateAck}
+          onAckTimeout={onAckTimeout}
+          onDismiss={onDismissEscalation}
+          onSafeConfirm={onSafeConfirm}
+        />
 
         <GlassCard testId="journey-control-card">
           <div className="section-head">
@@ -2440,10 +2736,20 @@ function AppShell() {
   const [whyModalOpen, setWhyModalOpen] = useState(false);
   const [isPhoneFrame, setIsPhoneFrame] = useState(false);
 
+  // Conservative Escalation System State
+  const [escalationStatus, setEscalationStatus] = useState("IDLE"); // IDLE, CONFIRMED_CHECKIN, PRIMARY_ALERTED, PRIMARY_ACKNOWLEDGED, SECONDARY_ALERTED
+  const [confirmationDeadline, setConfirmationDeadline] = useState(null);
+  const [ackDeadline, setAckDeadline] = useState(null);
+  const [cooldownUntil, setCooldownUntil] = useState(null);
+  const [escalationReasons, setEscalationReasons] = useState([]);
+  const [primaryContact, setPrimaryContact] = useState(null);
+  const [secondaryContact, setSecondaryContact] = useState(null);
+  const highCandidateRef = useRef(null);
+
   const refreshAll = useCallback(async () => {
     if (!token) return;
     try {
-      const [uRes, dashRes, profRes, journeyRes, contactRes, timelineRes, evidenceRes, privRes, setRes, overlayRes] =
+      const [uRes, dashRes, profRes, journeyRes, contactRes, timelineRes, evidenceRes, privRes, setRes, overlayRes, escRes] =
         await Promise.all([
           authed.get("/auth/me").catch(() => ({ data: null })),
           authed.get("/dashboard").catch(() => ({ data: null })),
@@ -2455,6 +2761,7 @@ function AppShell() {
           authed.get("/privacy").catch(() => ({ data: null })),
           authed.get("/settings").catch(() => ({ data: null })),
           authed.get("/map/overlays").catch(() => ({ data: null })),
+          authed.get("/escalation/active").catch(() => ({ data: null })),
         ]);
 
       if (uRes.data) setUser(uRes.data);
@@ -2467,6 +2774,28 @@ function AppShell() {
       if (privRes.data) setPrivacy(privRes.data);
       if (setRes.data) setSettings(setRes.data);
       if (overlayRes.data) setOverlays(overlayRes.data);
+
+      if (escRes.data) {
+        if (escRes.data.cooldown_until) setCooldownUntil(escRes.data.cooldown_until);
+        if (escRes.data.primary_contact) setPrimaryContact(escRes.data.primary_contact);
+        if (escRes.data.secondary_contact) setSecondaryContact(escRes.data.secondary_contact);
+
+        const sess = escRes.data.session;
+        if (sess) {
+          if (sess.status === "CONFIRMED_CHECKIN" && sess.confirmation_deadline > Date.now()) {
+            setEscalationStatus("CONFIRMED_CHECKIN");
+            setConfirmationDeadline(sess.confirmation_deadline);
+            setEscalationReasons(sess.reasons || ["Unusual route deviation detected", "Prolonged stop"]);
+          } else if (sess.status === "PRIMARY_ALERTED" && sess.ack_deadline > Date.now()) {
+            setEscalationStatus("PRIMARY_ALERTED");
+            setAckDeadline(sess.ack_deadline);
+          } else if (sess.status === "PRIMARY_ACKNOWLEDGED") {
+            setEscalationStatus("PRIMARY_ACKNOWLEDGED");
+          } else if (sess.status === "SECONDARY_ALERTED") {
+            setEscalationStatus("SECONDARY_ALERTED");
+          }
+        }
+      }
     } catch (err) {
       if (err.response?.status === 401) {
         logout();
@@ -2477,6 +2806,168 @@ function AppShell() {
   useEffect(() => {
     if (token) refreshAll();
   }, [refreshAll, token]);
+
+  const triggerHighRiskCheckin = useCallback(async (customReasons = null) => {
+    try {
+      const defaultReasons = ["Route deviation outside normal corridor", "Prolonged unexpected stop", "Duration overrun"];
+      const reasons = customReasons || dashboard?.latest_risk?.active_independent_signals || defaultReasons;
+      const res = await authed.post("/escalation/evaluate", {
+        score: dashboard?.risk_score || 78,
+        factors: dashboard?.latest_risk?.factors || [],
+        reasons,
+        journey_id: activeJourney?.id,
+        location: live.location,
+      });
+      if (res.data?.status === "confirmed_checkin") {
+        setEscalationStatus("CONFIRMED_CHECKIN");
+        setConfirmationDeadline(res.data.session?.confirmation_deadline || Date.now() + 30000);
+        setEscalationReasons(reasons);
+        if (res.data.session?.primary_contact) setPrimaryContact(res.data.session.primary_contact);
+        if (res.data.session?.secondary_contact) setSecondaryContact(res.data.session.secondary_contact);
+      }
+    } catch {
+      setEscalationStatus("CONFIRMED_CHECKIN");
+      setConfirmationDeadline(Date.now() + 30000);
+      setEscalationReasons(customReasons || ["Route deviation outside normal corridor", "Prolonged unexpected stop"]);
+    }
+  }, [activeJourney?.id, authed, dashboard?.latest_risk?.active_independent_signals, dashboard?.latest_risk?.factors, dashboard?.risk_score, live.location]);
+
+  // Sustained High Risk Confirmation Engine (Conservative: observe silently -> confirm sustained high risk -> ask once)
+  useEffect(() => {
+    const score = dashboard?.risk_score || 0;
+    const isCooldownActive = cooldownUntil && Date.now() < cooldownUntil;
+
+    // In cooldown: ignore anomalies silently
+    if (isCooldownActive) {
+      highCandidateRef.current = null;
+      return;
+    }
+
+    // Normal or Moderate (Score < 65): cancel any pending candidate silently
+    if (score < 65) {
+      highCandidateRef.current = null;
+      return;
+    }
+
+    // Already in check-in or contact alert
+    if (["CONFIRMED_CHECKIN", "PRIMARY_ALERTED", "SECONDARY_ALERTED", "PRIMARY_ACKNOWLEDGED"].includes(escalationStatus)) {
+      return;
+    }
+
+    const signalsCount = dashboard?.latest_risk?.independent_signals_count || 1;
+    // Condition A: Score >= 65 for 30s | Condition B: Score >= 75 with >=2 signals for 15s
+    const requiredMs = (score >= 75 && signalsCount >= 2) ? 15000 : 30000;
+
+    if (!highCandidateRef.current) {
+      highCandidateRef.current = {
+        startTime: Date.now(),
+        score,
+        requiredMs,
+      };
+    }
+
+    const interval = setInterval(() => {
+      if (!highCandidateRef.current) return;
+      const elapsed = Date.now() - highCandidateRef.current.startTime;
+      if (elapsed >= highCandidateRef.current.requiredMs) {
+        triggerHighRiskCheckin();
+        highCandidateRef.current = null;
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [dashboard?.risk_score, dashboard?.latest_risk, cooldownUntil, escalationStatus, triggerHighRiskCheckin]);
+
+  // User Confirms "I'm Safe" -> 5 minute cooldown active
+  const handleEscalationSafeConfirm = useCallback(async () => {
+    try {
+      const res = await authed.post("/escalation/action", {
+        action: "im_safe",
+        journey_id: activeJourney?.id,
+      });
+      const until = res.data?.cooldown_until || Date.now() + 300000;
+      setCooldownUntil(until);
+      setEscalationStatus("IDLE");
+      setConfirmationDeadline(null);
+      setAckDeadline(null);
+      toast.success("Safety confirmed. Escalation cancelled. 5-minute anomaly cooldown active.");
+      await refreshAll();
+    } catch {
+      setCooldownUntil(Date.now() + 300000);
+      setEscalationStatus("IDLE");
+      toast.success("Safety confirmed. Cooldown active.");
+    }
+  }, [activeJourney?.id, authed, refreshAll]);
+
+  // User clicks "Need Help" or 30s Confirmation Window expires -> Alert Primary Contact
+  const handleEscalationNeedHelp = useCallback(async (isTimeout = false) => {
+    try {
+      const res = await authed.post("/escalation/action", {
+        action: isTimeout ? "timeout" : "need_help",
+        journey_id: activeJourney?.id,
+      });
+      setEscalationStatus("PRIMARY_ALERTED");
+      setConfirmationDeadline(null);
+      setAckDeadline(res.data?.ack_deadline || Date.now() + 60000);
+      if (res.data?.primary_contact) setPrimaryContact(res.data.primary_contact);
+      toast.warning(
+        isTimeout ? "Check-in timed out. Alerting primary contact..." : "Help requested. Dispatched alert to primary contact."
+      );
+      await refreshAll();
+    } catch {
+      setEscalationStatus("PRIMARY_ALERTED");
+      setConfirmationDeadline(null);
+      setAckDeadline(Date.now() + 60000);
+      toast.warning("Primary contact alerted.");
+    }
+  }, [activeJourney?.id, authed, refreshAll]);
+
+  // Primary Contact Acknowledges
+  const handleEscalationPrimaryAck = useCallback(async () => {
+    try {
+      await authed.post("/escalation/action", { action: "primary_ack", journey_id: activeJourney?.id });
+      setEscalationStatus("PRIMARY_ACKNOWLEDGED");
+      setAckDeadline(null);
+      toast.success("Primary contact acknowledged alert. Secondary escalation halted.");
+      await refreshAll();
+    } catch {
+      setEscalationStatus("PRIMARY_ACKNOWLEDGED");
+      setAckDeadline(null);
+    }
+  }, [activeJourney?.id, authed, refreshAll]);
+
+  // 60s Ack Window Expires Without Ack -> Alert Secondary Contact
+  const handleEscalationAckTimeout = useCallback(async () => {
+    try {
+      const res = await authed.post("/escalation/action", { action: "ack_timeout", journey_id: activeJourney?.id });
+      setEscalationStatus("SECONDARY_ALERTED");
+      setAckDeadline(null);
+      if (res.data?.secondary_contact) setSecondaryContact(res.data.secondary_contact);
+      toast.error("Primary contact timed out. Alerted secondary contact. Automatic escalation halted.");
+      await refreshAll();
+    } catch {
+      setEscalationStatus("SECONDARY_ALERTED");
+      setAckDeadline(null);
+    }
+  }, [activeJourney?.id, authed, refreshAll]);
+
+  // User Holds SOS for 1.5s -> Direct User SOS Action
+  const handleEscalationHoldSOS = useCallback(() => {
+    setEscalationStatus("IDLE");
+    setConfirmationDeadline(null);
+    setView("sos");
+  }, []);
+
+  // Dismiss completed escalation banner
+  const handleDismissEscalation = useCallback(async () => {
+    try {
+      await authed.post("/escalation/action", { action: "resolve", journey_id: activeJourney?.id });
+      setEscalationStatus("IDLE");
+      await refreshAll();
+    } catch {
+      setEscalationStatus("IDLE");
+    }
+  }, [activeJourney?.id, authed, refreshAll]);
 
   useEffect(() => {
     const handler = (e) => setView(e.detail);
@@ -2527,15 +3018,22 @@ function AppShell() {
         scenario: scenarioId,
         journey_id: activeJourney?.id,
         location: live.location,
-        auto_escalate: scenarioId === "sos" || scenarioId === "high_risk",
+        auto_escalate: scenarioId === "sos",
       });
       const risk = res.data.risk_result;
       toast.warning(`[Demo Scenario] ${res.data.title}`, {
         description: `Risk score: ${risk.score} (${risk.risk_level || risk.state.toUpperCase()}). ${res.data.reasons?.[0] || ""}`,
       });
+
       if (scenarioId === "sos") {
         setView("sos");
+      } else if (scenarioId === "high_risk" || scenarioId === "elevated_risk") {
+        // Trigger high risk check-in modal directly for interactive testing
+        triggerHighRiskCheckin(res.data.reasons);
+      } else if (scenarioId === "safe_checkin") {
+        await handleEscalationSafeConfirm();
       }
+
       await refreshAll();
     } catch (err) {
       toast.error(formatApiError(err, "Demo simulation failed"));
@@ -2549,6 +3047,10 @@ function AppShell() {
     try {
       await authed.post("/demo/reset", {});
       setActiveScenario(null);
+      setEscalationStatus("IDLE");
+      setConfirmationDeadline(null);
+      setAckDeadline(null);
+      setCooldownUntil(null);
       await refreshAll();
       toast.success("Demo state reset to clean baseline (Score: 12, Safe)");
     } catch (err) {
@@ -2742,6 +3244,16 @@ function AppShell() {
           onOpenWhy={() => setWhyModalOpen(true)}
           onCheckIn={handleCheckIn}
           user={user}
+          authed={authed}
+          escalationStatus={escalationStatus}
+          primaryContact={primaryContact}
+          secondaryContact={secondaryContact}
+          ackDeadline={ackDeadline}
+          cooldownUntil={cooldownUntil}
+          onSimulateAck={handleEscalationPrimaryAck}
+          onAckTimeout={handleEscalationAckTimeout}
+          onDismissEscalation={handleDismissEscalation}
+          onSafeConfirm={handleEscalationSafeConfirm}
         />
       );
     }
@@ -2764,6 +3276,15 @@ function AppShell() {
           onSOS={() => setView("sos")}
           onOpenWhy={() => setWhyModalOpen(true)}
           authed={authed}
+          escalationStatus={escalationStatus}
+          primaryContact={primaryContact}
+          secondaryContact={secondaryContact}
+          ackDeadline={ackDeadline}
+          cooldownUntil={cooldownUntil}
+          onSimulateAck={handleEscalationPrimaryAck}
+          onAckTimeout={handleEscalationAckTimeout}
+          onDismissEscalation={handleDismissEscalation}
+          onSafeConfirm={handleEscalationSafeConfirm}
         />
       );
     }
@@ -2790,6 +3311,15 @@ function AppShell() {
           isLocating={live.isLocating}
           accuracy={live.accuracy}
           onOpenWhy={() => setWhyModalOpen(true)}
+          escalationStatus={escalationStatus}
+          primaryContact={primaryContact}
+          secondaryContact={secondaryContact}
+          ackDeadline={ackDeadline}
+          cooldownUntil={cooldownUntil}
+          onSimulateAck={handleEscalationPrimaryAck}
+          onAckTimeout={handleEscalationAckTimeout}
+          onDismissEscalation={handleDismissEscalation}
+          onSafeConfirm={handleEscalationSafeConfirm}
         />
       );
     }
@@ -2833,6 +3363,15 @@ function AppShell() {
         onCheckIn={handleCheckIn}
         user={user}
         authed={authed}
+        escalationStatus={escalationStatus}
+        primaryContact={primaryContact}
+        secondaryContact={secondaryContact}
+        ackDeadline={ackDeadline}
+        cooldownUntil={cooldownUntil}
+        onSimulateAck={handleEscalationPrimaryAck}
+        onAckTimeout={handleEscalationAckTimeout}
+        onDismissEscalation={handleDismissEscalation}
+        onSafeConfirm={handleEscalationSafeConfirm}
       />
     );
   };
@@ -2902,6 +3441,17 @@ function AppShell() {
           {/* iOS Bottom Home Indicator */}
           <div className="phone-home-indicator" />
         </div>
+
+        {/* High-Risk Single Check-In Modal (Conservative Escalation Ladder) */}
+        {escalationStatus === "CONFIRMED_CHECKIN" && (
+          <HighRiskCheckinModal
+            deadline={confirmationDeadline}
+            reasons={escalationReasons}
+            onSafeConfirm={handleEscalationSafeConfirm}
+            onNeedHelp={handleEscalationNeedHelp}
+            onSOS={handleEscalationHoldSOS}
+          />
+        )}
 
         {/* Why This Risk Explainability Modal */}
         {whyModalOpen && (
@@ -3128,6 +3678,17 @@ function AppShell() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* High-Risk Single Check-In Modal (Conservative Escalation Ladder) */}
+      {escalationStatus === "CONFIRMED_CHECKIN" && (
+        <HighRiskCheckinModal
+          deadline={confirmationDeadline}
+          reasons={escalationReasons}
+          onSafeConfirm={handleEscalationSafeConfirm}
+          onNeedHelp={handleEscalationNeedHelp}
+          onSOS={handleEscalationHoldSOS}
+        />
+      )}
 
       {/* Why This Risk Explainability Modal */}
       {whyModalOpen && (

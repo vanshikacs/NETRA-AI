@@ -169,6 +169,14 @@ def compute_risk(signals: Dict[str, Any], sensitivity: float = 0.72, profile: Op
     voice = float(signals.get("voice_stress", 0))
     battery = float(signals.get("battery_factor", 0))
     offline = bool(signals.get("offline", False))
+    is_familiar = bool(signals.get("is_familiar_area", False))
+    
+    # Familiar-Area Suppression: If in a known familiar area, suppress risk contribution
+    familiar_suppressed = False
+    if is_familiar or (profile and profile.get("familiar_routes") and location < 30 and routine > 30):
+        routine = routine * 0.55
+        location = location * 0.60
+        familiar_suppressed = True
     
     # Profile context influences
     dev_tolerance = profile.get("deviation_tolerance", "Moderate (300m - 500m)") if profile else "Moderate (300m - 500m)"
@@ -179,7 +187,7 @@ def compute_risk(signals: Dict[str, Any], sensitivity: float = 0.72, profile: Op
         ("Routine deviation", routine_adjusted, 0.28, f"Route deviation evaluated against your {dev_tolerance.split(' ')[0].lower()} tolerance baseline."),
         ("Motion anomaly", motion, 0.25, "Pace rhythm, unexpected stop/start, or impact signature compared with personal baseline."),
         ("Location context", location, 0.24, "Nearby incident reports, lighting conditions, and distance from trusted safe zones."),
-        ("Optional voice stress", voice, 0.18, "Derived vocal strain flag processed on-device (audio raw data discarded)."),
+        ("Journey duration / stress", voice, 0.18, "Derived duration overrun and movement strain flag processed locally."),
         ("Battery/offline resilience", battery + (8 if offline else 0), 0.05, "Power state and local edge inference confidence mode."),
     ]
     raw = sum(clamp(value) * weight for _, value, weight, _ in weights)
@@ -195,26 +203,34 @@ def compute_risk(signals: Dict[str, Any], sensitivity: float = 0.72, profile: Op
             "explanation": explanation,
         })
     
-    if score < 30:
+    # Normalized ranges: LOW: 0–34, MEDIUM: 35–64, HIGH: 65–84, CRITICAL: 85–100
+    if score < 35:
         risk_level = "LOW"
         state = "safe"
-        recommended_action = "Continue monitoring. Movement is within your normal baseline."
-    elif score < 60:
+        recommended_action = "Continue passive monitoring. Movement is normal."
+    elif score < 65:
         risk_level = "MODERATE"
         state = "watch"
-        recommended_action = "Check-in recommended."
-    elif score < 80:
-        risk_level = "ELEVATED"
-        state = "confirm"
-        recommended_action = "Please confirm you're safe."
+        recommended_action = "Silent observation. Moderate deviation observed without user interruption."
     elif score < 85:
         risk_level = "HIGH"
-        state = "emergency"
-        recommended_action = "Trusted contact alert recommended."
+        state = "confirm"
+        recommended_action = "Sustained high risk requires user confirmation."
     else:
         risk_level = "CRITICAL"
         state = "critical"
-        recommended_action = "Activate SOS and alert trusted contacts."
+        recommended_action = "Severe multi-signal compound anomaly detected."
+
+    # Identify distinct, independent meaningful signals
+    active_signals = []
+    if routine_adjusted >= 40:
+        active_signals.append("Route deviation")
+    if motion >= 40:
+        active_signals.append("Unexpected stop")
+    if voice >= 40:
+        active_signals.append("Journey duration overrun")
+    if location >= 50:
+        active_signals.append("Unfamiliar contextual corridor")
 
     sorted_factors = sorted(factors, key=lambda x: x["contribution"], reverse=True)
     if sorted_factors[0]["contribution"] > 8:
@@ -223,7 +239,7 @@ def compute_risk(signals: Dict[str, Any], sensitivity: float = 0.72, profile: Op
     else:
         why_changed = "Current activity aligns with your baseline pattern. No significant deviations detected."
 
-    conf_val = int(min(98, max(50, 85 + (5 if score < 30 else -10 if score < 60 else 8))))
+    conf_val = int(min(98, max(50, 85 + (5 if score < 35 else -10 if score < 65 else 8))))
     confidence_label = "High" if conf_val >= 80 else "Moderate"
 
     signals_detected = [
@@ -242,11 +258,14 @@ def compute_risk(signals: Dict[str, Any], sensitivity: float = 0.72, profile: Op
         "why_the_score_changed": why_changed,
         "why_changed": why_changed,
         "signals_detected": signals_detected,
+        "active_independent_signals": active_signals,
+        "independent_signals_count": len(active_signals),
+        "qualifies_high_condition_a": score >= 65,
+        "qualifies_high_condition_b": score >= 75 and len(active_signals) >= 2,
+        "familiar_area_suppressed": familiar_suppressed,
         "confidence": conf_val,
         "confidence_label": confidence_label,
         "evidence_quality": "Sensor baseline verified",
-        "confirmation_required": score >= 60,
-        "confirmation_window_seconds": 12,
         "factors": sorted_factors,
         "privacy": {
             "raw_sensor_policy": "Raw motion/audio never leaves device; this API stores derived flags only.",
@@ -658,6 +677,21 @@ class CommunityAlertRequest(BaseModel):
     location: Dict[str, float]
 
 
+class EscalationEvaluateRequest(BaseModel):
+    score: int
+    signals: Optional[Dict[str, Any]] = None
+    location: Optional[Dict[str, float]] = None
+    journey_id: Optional[str] = None
+    reasons: Optional[List[str]] = None
+
+
+class EscalationActionRequest(BaseModel):
+    action: str = Field(pattern="^(im_safe|need_help|timeout|ack_timeout|primary_ack|resolve)$")
+    session_id: Optional[str] = None
+    journey_id: Optional[str] = None
+    reason: Optional[str] = None
+
+
 @api_router.get("/")
 async def root():
     return {"message": "SentinelPulse API online", "mode": "privacy-first edge relay"}
@@ -983,6 +1017,204 @@ async def alert_trusted_contacts(payload: Dict[str, Any] = None, user: Dict[str,
         })
     await create_audit(user["id"], "contacts.alert", {"count": len(contacts)})
     return {"status": "alerted", "count": len(contacts), "message": f"{len(contacts)} response circle members notified"}
+
+
+@api_router.get("/escalation/active")
+async def get_active_escalation(user: Dict[str, Any] = Depends(get_current_user)):
+    session = await db.escalation_sessions.find_one(
+        {"user_id": user["id"], "status": {"$in": ["CONFIRMED_CHECKIN", "PRIMARY_ALERTED", "SECONDARY_ALERTED"]}},
+        {"_id": 0},
+        sort=[("created_at", -1)]
+    )
+    user_doc = await db.users.find_one({"id": user["id"]}, {"_id": 0, "safe_cooldown_until": 1})
+    cooldown_until = user_doc.get("safe_cooldown_until") if user_doc else None
+    
+    contacts = await db.contacts.find({"user_id": user["id"]}, {"_id": 0}).to_list(20)
+    primary = next((c for c in contacts if c.get("tier") == "primary"), contacts[0] if contacts else None)
+    secondary = next((c for c in contacts if c.get("tier") == "secondary"), contacts[1] if len(contacts) > 1 else None)
+    
+    return serialize_doc({
+        "active_session": session,
+        "cooldown_until": cooldown_until,
+        "primary_contact": primary,
+        "secondary_contact": secondary,
+    })
+
+
+@api_router.post("/escalation/evaluate")
+async def evaluate_escalation(payload: EscalationEvaluateRequest, user: Dict[str, Any] = Depends(get_current_user)):
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    user_doc = await db.users.find_one({"id": user["id"]}, {"_id": 0, "safe_cooldown_until": 1})
+    cooldown_until = user_doc.get("safe_cooldown_until", 0) if user_doc else 0
+    
+    if cooldown_until and now_ms < cooldown_until:
+        return {"status": "cooldown_active", "cooldown_until": cooldown_until, "escalate": False, "reason": "Cooldown active after safe confirmation"}
+    
+    score = payload.score
+    if score < 35:
+        return {"status": "low_risk", "escalate": False, "reason": "Normal baseline"}
+    elif score < 65:
+        return {"status": "medium_risk_passive", "escalate": False, "reason": "Silent observation only"}
+    
+    # Check if there is an existing active session
+    existing = await db.escalation_sessions.find_one(
+        {"user_id": user["id"], "status": {"$in": ["CONFIRMED_CHECKIN", "PRIMARY_ALERTED", "SECONDARY_ALERTED"]}},
+        {"_id": 0},
+        sort=[("created_at", -1)]
+    )
+    if existing:
+        return {"status": "existing_session", "session": serialize_doc(existing), "escalate": True}
+    
+    # Create new escalation session
+    contacts = await db.contacts.find({"user_id": user["id"]}, {"_id": 0}).to_list(20)
+    primary = next((c for c in contacts if c.get("tier") == "primary"), contacts[0] if contacts else None)
+    secondary = next((c for c in contacts if c.get("tier") == "secondary"), contacts[1] if len(contacts) > 1 else None)
+    
+    session_id = str(uuid.uuid4())
+    confirmation_deadline = now_ms + 30000  # 30 seconds
+    
+    session_doc = {
+        "id": session_id,
+        "user_id": user["id"],
+        "journey_id": payload.journey_id,
+        "status": "CONFIRMED_CHECKIN",
+        "risk_score": score,
+        "reasons": payload.reasons or ["Route deviation", "Unexpected stop", "Journey duration overrun"],
+        "confirmation_deadline": confirmation_deadline,
+        "ack_deadline": None,
+        "primary_contact": primary,
+        "secondary_contact": secondary,
+        "location": payload.location,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    await db.escalation_sessions.insert_one(session_doc)
+    
+    # Record exactly ONE milestone event in journey timeline
+    await db.journey_events.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "journey_id": payload.journey_id or "general",
+        "time": now_iso(),
+        "label": "High-Risk State Confirmed",
+        "detail": "Sustained compound anomaly detected. 30s user check-in displayed.",
+        "tone": "danger",
+        "location": payload.location,
+    })
+    
+    return {"status": "confirmed_checkin", "session": serialize_doc(session_doc), "escalate": True}
+
+
+@api_router.post("/escalation/action")
+async def escalation_action(payload: EscalationActionRequest, user: Dict[str, Any] = Depends(get_current_user)):
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    action = payload.action
+    
+    contacts = await db.contacts.find({"user_id": user["id"]}, {"_id": 0}).to_list(20)
+    primary = next((c for c in contacts if c.get("tier") == "primary"), contacts[0] if contacts else None)
+    secondary = next((c for c in contacts if c.get("tier") == "secondary"), contacts[1] if len(contacts) > 1 else None)
+
+    if action == "im_safe":
+        cooldown_until = now_ms + 300000  # 5 minutes
+        await db.users.update_one({"id": user["id"]}, {"$set": {"safe_cooldown_until": cooldown_until}})
+        await db.escalation_sessions.update_many(
+            {"user_id": user["id"], "status": {"$in": ["CONFIRMED_CHECKIN", "PRIMARY_ALERTED", "SECONDARY_ALERTED"]}},
+            {"$set": {"status": "SAFE_CONFIRMED", "resolved_at": now_iso(), "updated_at": now_iso()}}
+        )
+        # Log milestone to timeline
+        await db.journey_events.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "journey_id": payload.journey_id or "general",
+            "time": now_iso(),
+            "label": "User Confirmed Safe",
+            "detail": "Escalation cancelled. 5-minute anomaly cooldown active.",
+            "tone": "safe",
+        })
+        await create_audit(user["id"], "escalation.im_safe", {"cooldown_until": cooldown_until})
+        return {"status": "safe_confirmed", "cooldown_until": cooldown_until, "message": "Safety confirmed. 5-minute cooldown active."}
+
+    elif action in ["need_help", "timeout"]:
+        ack_deadline = now_ms + 60000  # 60 seconds
+        await db.escalation_sessions.update_many(
+            {"user_id": user["id"], "status": {"$in": ["CONFIRMED_CHECKIN", "PRIMARY_ALERTED"]}},
+            {"$set": {"status": "PRIMARY_ALERTED", "ack_deadline": ack_deadline, "updated_at": now_iso()}}
+        )
+        if primary:
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": user["id"],
+                "type": "primary_contact_alert",
+                "title": f"Safety Alert: {primary['name']}",
+                "body": f"SentinelPulse alert dispatched to {primary['name']}: User requested help or check-in timed out. Monitoring live status.",
+                "read": False,
+                "created_at": now_iso(),
+            })
+        reason_label = "User Requested Help" if action == "need_help" else "Check-In Timed Out"
+        await db.journey_events.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "journey_id": payload.journey_id or "general",
+            "time": now_iso(),
+            "label": f"{reason_label} — Primary Contact Alerted",
+            "detail": f"Dispatched alert to {primary['name'] if primary else 'primary contact'}. 60s acknowledgement window open.",
+            "tone": "danger",
+        })
+        await create_audit(user["id"], f"escalation.{action}", {"primary_contact": primary.get("name") if primary else None})
+        return {"status": "primary_alerted", "primary_contact": primary, "ack_deadline": ack_deadline}
+
+    elif action == "primary_ack":
+        await db.escalation_sessions.update_many(
+            {"user_id": user["id"], "status": "PRIMARY_ALERTED"},
+            {"$set": {"status": "PRIMARY_ACKNOWLEDGED", "updated_at": now_iso()}}
+        )
+        await db.journey_events.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "journey_id": payload.journey_id or "general",
+            "time": now_iso(),
+            "label": "Primary Contact Acknowledged",
+            "detail": f"{primary['name'] if primary else 'Primary contact'} acknowledged alert. Secondary escalation halted.",
+            "tone": "safe",
+        })
+        await create_audit(user["id"], "escalation.primary_ack", {})
+        return {"status": "primary_acknowledged", "message": "Primary contact acknowledged."}
+
+    elif action == "ack_timeout":
+        await db.escalation_sessions.update_many(
+            {"user_id": user["id"], "status": "PRIMARY_ALERTED"},
+            {"$set": {"status": "SECONDARY_ALERTED", "updated_at": now_iso()}}
+        )
+        if secondary:
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": user["id"],
+                "type": "secondary_contact_alert",
+                "title": f"Secondary Alert: {secondary['name']}",
+                "body": f"Primary contact did not acknowledge within 60s. SentinelPulse notified secondary contact {secondary['name']}.",
+                "read": False,
+                "created_at": now_iso(),
+            })
+        await db.journey_events.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "journey_id": payload.journey_id or "general",
+            "time": now_iso(),
+            "label": "Primary Timed Out — Secondary Contact Alerted",
+            "detail": f"No acknowledgement received within 60s. Dispatched alert to {secondary['name'] if secondary else 'secondary contact'}. Automatic escalation stopped.",
+            "tone": "danger",
+        })
+        await create_audit(user["id"], "escalation.secondary_alerted", {})
+        return {"status": "secondary_alerted", "secondary_contact": secondary}
+
+    elif action == "resolve":
+        await db.escalation_sessions.update_many(
+            {"user_id": user["id"], "status": {"$in": ["CONFIRMED_CHECKIN", "PRIMARY_ALERTED", "SECONDARY_ALERTED", "PRIMARY_ACKNOWLEDGED"]}},
+            {"$set": {"status": "RESOLVED", "resolved_at": now_iso(), "updated_at": now_iso()}}
+        )
+        return {"status": "resolved"}
+
+    return {"status": "unknown_action"}
 
 
 @api_router.delete("/contacts/{contact_id}")
@@ -1353,7 +1585,7 @@ async def simulate_demo(payload: DemoScenarioRequest, user: Dict[str, Any] = Dep
     })
     
     emergency_doc = None
-    if payload.scenario == "sos" or payload.auto_escalate or result["score"] >= 80:
+    if payload.scenario == "sos":
         contacts = await db.contacts.find({"user_id": user["id"]}, {"_id": 0}).to_list(50)
         emergency_doc = {
             "id": str(uuid.uuid4()),
