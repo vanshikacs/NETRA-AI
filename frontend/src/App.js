@@ -173,21 +173,67 @@ function useLiveLocation(enabled = true) {
   const [location, setLocation] = useState(DEFAULT_LOCATION);
   const [accuracy, setAccuracy] = useState(null);
   const [error, setError] = useState("");
+  const [hasRealFix, setHasRealFix] = useState(false);
+
+  const requestGps = useCallback(() => {
+    if (!navigator.geolocation) {
+      // If browser doesn't support geolocation, fallback to IP
+      fetch("https://ipapi.co/json/")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.latitude && data?.longitude) {
+            setLocation({ lat: Number(data.latitude), lng: Number(data.longitude) });
+            setAccuracy(1000);
+            setHasRealFix(true);
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setAccuracy(pos.coords.accuracy);
+        setError("");
+        setHasRealFix(true);
+      },
+      (err) => {
+        console.warn("GPS error:", err.message, "Falling back to IP geolocation...");
+        fetch("https://ipapi.co/json/")
+          .then((r) => r.json())
+          .then((data) => {
+            if (data?.latitude && data?.longitude) {
+              setLocation({ lat: Number(data.latitude), lng: Number(data.longitude) });
+              setAccuracy(1000);
+              setHasRealFix(true);
+            }
+          })
+          .catch(() => {});
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }, []);
 
   useEffect(() => {
-    if (!enabled || !navigator.geolocation) return undefined;
+    if (!enabled) return undefined;
+    requestGps();
+
+    if (!navigator.geolocation) return undefined;
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         setAccuracy(pos.coords.accuracy);
         setError("");
+        setHasRealFix(true);
       },
       (err) => setError(err.message || "Location permission unavailable"),
-      { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
     );
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [enabled]);
-  return { location, setLocation, accuracy, error };
+  }, [enabled, requestGps]);
+
+  return { location, setLocation, accuracy, error, hasRealFix, requestGps };
 }
 
 function apiWithToken(token) {
@@ -1010,7 +1056,9 @@ function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onS
     } else {
       layersRef.current.user.setLatLng(latlng);
     }
-    if (!activeJourney) map.panTo(latlng, { animate: true, duration: 0.8 });
+    if (!activeJourney) {
+      map.flyTo(latlng, map.getZoom() < 13 ? 15 : map.getZoom(), { duration: 1.2 });
+    }
   }, [location, activeJourney]);
 
   useEffect(() => {
@@ -1027,7 +1075,8 @@ function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onS
   }, [route, activeJourney]);
 
   const recenter = () => {
-    mapRef.current?.flyTo([location.lat, location.lng], 16, { duration: 0.8 });
+    mapRef.current?.flyTo([location.lat, location.lng], 16, { duration: 1.0 });
+    toast.info("Centered to current location");
   };
 
   return (
