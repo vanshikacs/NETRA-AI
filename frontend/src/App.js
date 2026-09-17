@@ -179,13 +179,14 @@ function useLiveLocation(enabled = true) {
   const requestGps = useCallback((forceToast = false) => {
     if (!navigator.geolocation) {
       setError("Geolocation not supported by browser");
-      if (forceToast) toast.error("GPS not supported on this browser");
+      if (forceToast) toast.info("Geolocation not supported. Using active baseline.");
       return;
     }
 
     setIsLocating(true);
-    if (forceToast) toast.loading("Acquiring high-precision GPS...", { id: "gps-lock" });
+    if (forceToast) toast.loading("Detecting location...", { id: "gps-lock" });
 
+    // Step 1: Fast network/Wi-Fi positioning (instant on laptops/browsers)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude, accuracy: acc } = pos.coords;
@@ -195,16 +196,33 @@ function useLiveLocation(enabled = true) {
           setError("");
           setHasRealFix(true);
           setIsLocating(false);
-          if (forceToast) toast.success(`GPS Locked (±${Math.round(acc)}m accuracy)`, { id: "gps-lock" });
+          if (forceToast) toast.success(`Location locked (±${Math.round(acc)}m accuracy)`, { id: "gps-lock" });
         }
       },
-      (err) => {
-        console.warn("GPS lookup note:", err.message);
-        setError(err.message || "GPS unavailable");
-        setIsLocating(false);
-        if (forceToast) toast.error(`GPS note: ${err.message}. Using baseline location.`, { id: "gps-lock" });
+      () => {
+        // Step 2: High-accuracy hardware fallback (for mobile phones)
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude, accuracy: acc } = pos.coords;
+            if (latitude && longitude) {
+              setLocation({ lat: latitude, lng: longitude });
+              setAccuracy(acc);
+              setError("");
+              setHasRealFix(true);
+              setIsLocating(false);
+              if (forceToast) toast.success(`Location locked (±${Math.round(acc)}m)`, { id: "gps-lock" });
+            }
+          },
+          (err) => {
+            console.warn("Location note:", err.message);
+            setError(err.message || "GPS unavailable");
+            setIsLocating(false);
+            if (forceToast) toast.info("Using baseline location (Lucknow Corridor)", { id: "gps-lock" });
+          },
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
+        );
       },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 }
+      { enableHighAccuracy: false, timeout: 4000, maximumAge: 10000 }
     );
   }, []);
 
@@ -224,7 +242,7 @@ function useLiveLocation(enabled = true) {
         }
       },
       () => {},
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 25000 }
+      { enableHighAccuracy: false, maximumAge: 5000, timeout: 8000 }
     );
     return () => navigator.geolocation.clearWatch(watchId);
   }, [enabled, requestGps]);
