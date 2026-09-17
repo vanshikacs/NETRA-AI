@@ -90,12 +90,12 @@ const DEFAULT_LOCATION = { lat: 28.6139, lng: 77.209 };
 
 // Primary navigation — 6 core screens shown in sidebar and mobile bottom nav
 const PRIMARY_NAV = [
-  { id: "home",     label: "Home",            icon: Home },
-  { id: "profile",  label: "Safety Profile",  icon: Shield },
-  { id: "journey",  label: "Smart Journey",   icon: Route },
-  { id: "live",     label: "Live Protection", icon: Activity },
-  { id: "sos",      label: "SOS",             icon: Siren },
-  { id: "insights", label: "Safety Insights", icon: Sparkles },
+  { id: "home",     label: "Home",            mobileLabel: "Home",     icon: Home },
+  { id: "profile",  label: "Safety Profile",  mobileLabel: "Profile",  icon: Shield },
+  { id: "journey",  label: "Smart Journey",   mobileLabel: "Journey",  icon: Route },
+  { id: "live",     label: "Live Protection", mobileLabel: "Live",     icon: Activity },
+  { id: "sos",      label: "SOS",             mobileLabel: "SOS",      icon: Siren },
+  { id: "insights", label: "Safety Insights", mobileLabel: "Insights", icon: Sparkles },
 ];
 
 // Secondary navigation — contextual screens accessible from sidebar
@@ -417,7 +417,7 @@ function WelcomeScreen({ onGetStarted, onSignIn, onDemo }) {
         <motion.div className="welcome-hero" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
           <div className="brand-badge-row">
             <span className="icon-badge tone-teal">
-              <ShieldCheck size={15} /> Lenovo LEAP AI Hackathon 2026
+              <ShieldCheck size={15} /> Personal Safety Intelligence
             </span>
           </div>
 
@@ -680,13 +680,13 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
       {/* Hero Status Card */}
       <GlassCard className="hero-shield" testId="home-ai-shield-card" style={{ padding: "22px", gridColumn: "span 12" }}>
         {/* Header row: greeting + status */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 42, height: 42, borderRadius: 14, background: "rgba(0,230,184,0.14)", border: "1px solid rgba(0,230,184,0.25)", display: "grid", placeItems: "center" }}>
               <ShieldCheck size={22} style={{ color: "#00E6B8" }} />
             </div>
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <strong style={{ fontSize: 17, letterSpacing: "-0.02em" }}>Hello, {userName}</strong>
                 <StatusDot state="safe" label="Protection Active" />
               </div>
@@ -712,8 +712,8 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
           </small>
         </div>
 
-        {/* 4 Quick Action Tiles — teal-primary palette only */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+        {/* 4 Quick Action Tiles — responsive grid */}
+        <div className="quick-actions-grid">
           <button
             type="button"
             style={{ background: "rgba(0,230,184,0.10)", border: "1px solid rgba(0,230,184,0.22)", borderRadius: 16, padding: "14px 10px", cursor: "pointer", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, transition: "background 0.2s" }}
@@ -906,7 +906,7 @@ function LiveProtectionScreen({ activeJourney, dashboard, onNavigate, onCheckIn,
         </div>
 
         {/* Journey metrics strip */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
+        <div className="metrics-strip-grid">
           {[
             { label: "ETA", value: formatDuration(activeJourney.eta_seconds) },
             { label: "Safety Score", value: `${safety}/100` },
@@ -1928,7 +1928,7 @@ function InsightsScreen({ insight, getInsight, activeJourney }) {
         </div>
         <h2>Baseline Learning Progress</h2>
         
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginTop: 24 }}>
+        <div className="insights-stats-grid">
           {[
             { label: "Journeys Monitored", value: "24", sub: "Since install" },
             { label: "Baseline Confidence", value: "92%", sub: "Highly reliable" },
@@ -2601,14 +2601,14 @@ function AppShell() {
 
       {/* Part 22: Mobile Bottom Navigation */}
       <nav className="bottom-nav" aria-label="Mobile navigation">
-        {PRIMARY_NAV.filter(n => n.id !== "insights").map(({ id, label, icon: Icon }) => (
+        {PRIMARY_NAV.filter(n => n.id !== "insights").map(({ id, label, mobileLabel, icon: Icon }) => (
           <button 
             key={id}
             data-testid={`mobile-nav-${id}-button`} 
             className={cx(view === id ? "active" : "", id === "sos" && "mobile-sos-btn", view === "sos" && id === "sos" && "active-sos")} 
             onClick={() => setView(id)}
           >
-            <Icon size={id === "sos" ? 20 : 19} /><span>{label}</span>
+            <Icon size={id === "sos" ? 20 : 18} /><span>{mobileLabel || label}</span>
           </button>
         ))}
       </nav>
