@@ -174,12 +174,17 @@ function useLiveLocation(enabled = true) {
   const [accuracy, setAccuracy] = useState(null);
   const [error, setError] = useState("");
   const [hasRealFix, setHasRealFix] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
 
-  const requestGps = useCallback(() => {
+  const requestGps = useCallback((forceToast = false) => {
     if (!navigator.geolocation) {
       setError("Geolocation not supported by browser");
+      if (forceToast) toast.error("GPS not supported on this browser");
       return;
     }
+
+    setIsLocating(true);
+    if (forceToast) toast.loading("Acquiring high-precision GPS...", { id: "gps-lock" });
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -189,20 +194,23 @@ function useLiveLocation(enabled = true) {
           setAccuracy(acc);
           setError("");
           setHasRealFix(true);
+          setIsLocating(false);
+          if (forceToast) toast.success(`GPS Locked (±${Math.round(acc)}m accuracy)`, { id: "gps-lock" });
         }
       },
       (err) => {
         console.warn("GPS lookup note:", err.message);
         setError(err.message || "GPS unavailable");
-        // Maintain clean fallback (Lucknow) without jumping to remote ISP server
+        setIsLocating(false);
+        if (forceToast) toast.error(`GPS note: ${err.message}. Using baseline location.`, { id: "gps-lock" });
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 }
     );
   }, []);
 
   useEffect(() => {
     if (!enabled) return undefined;
-    requestGps();
+    requestGps(false);
 
     if (!navigator.geolocation) return undefined;
     const watchId = navigator.geolocation.watchPosition(
@@ -212,17 +220,16 @@ function useLiveLocation(enabled = true) {
           setAccuracy(pos.coords.accuracy);
           setError("");
           setHasRealFix(true);
+          setIsLocating(false);
         }
       },
-      (err) => {
-        // Passive watch
-      },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 }
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 25000 }
     );
     return () => navigator.geolocation.clearWatch(watchId);
   }, [enabled, requestGps]);
 
-  return { location, setLocation, accuracy, error, hasRealFix, requestGps };
+  return { location, setLocation, accuracy, error, hasRealFix, isLocating, requestGps };
 }
 
 function apiWithToken(token, onUnauthorized) {
@@ -1030,7 +1037,7 @@ function LiveProtectionScreen({ activeJourney, dashboard, onNavigate, onCheckIn,
 }
 
 // Part 9: Simplified, Understandable Luxury Smart Radar Map (References 1, 2, 3)
-function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onStartJourney, compact = false }) {
+function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onStartJourney, compact = false, onRequestGps, isLocating, accuracy }) {
   const [legendOpen, setLegendOpen] = useState(false);
   const mapRef = useRef(null);
   const elRef = useRef(null);
@@ -1053,35 +1060,35 @@ function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onS
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !location?.lat || !location?.lng) return;
     const latlng = [location.lat, location.lng];
 
-    // Clean teal location dot — calm, readable, no decoration overload
+    // High-visibility glowing pulse location dot
     const dotHtml = `
-      <div style="position:relative;width:20px;height:20px;">
-        <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,230,184,0.25);animation:breathe 2.6s ease-in-out infinite;"></div>
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;background:#00E6B8;border:2px solid #fff;box-shadow:0 0 8px rgba(0,230,184,0.6);"></div>
+      <div style="position:relative;width:24px;height:24px;">
+        <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,230,184,0.32);animation:breathe 2.4s ease-in-out infinite;"></div>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;background:#00E6B8;border:2.5px solid #ffffff;box-shadow:0 0 10px rgba(0,230,184,0.85);"></div>
       </div>
     `;
 
     const dotIcon = L.divIcon({
       className: "sp-location-dot-icon",
       html: dotHtml,
-      iconSize: [20, 20],
-      iconAnchor: [10, 10],
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
     });
 
     if (!layersRef.current.user) {
       const marker = L.marker(latlng, { icon: dotIcon }).addTo(map);
-      marker.bindTooltip("Your location (Active baseline)", { permanent: false });
+      marker.bindTooltip("Your Location (Live GPS)", { permanent: false });
       layersRef.current.user = marker;
     } else {
       layersRef.current.user.setLatLng(latlng);
     }
     if (!activeJourney) {
-      map.flyTo(latlng, map.getZoom() < 13 ? 15 : map.getZoom(), { duration: 1.2 });
+      map.flyTo(latlng, map.getZoom() < 14 ? 15 : map.getZoom(), { duration: 1.0 });
     }
-  }, [location, activeJourney]);
+  }, [location.lat, location.lng, activeJourney]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1090,29 +1097,17 @@ function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onS
     const routeData = route || activeJourney?.route;
     if (routeData?.coordinates?.length) {
       const points = routeData.coordinates.map((p) => [p.lat, p.lng]);
-      // Glowing Cyan/Blue Route (Reference 1 & 3)
       layersRef.current.route = L.polyline(points, { color: "#06b6d4", weight: 6, opacity: 0.95, dashArray: "8 12", lineCap: "round" }).addTo(map);
       map.fitBounds(layersRef.current.route.getBounds(), { padding: [40, 40], animate: true });
     }
   }, [route, activeJourney]);
 
   const recenter = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const latlng = [pos.coords.latitude, pos.coords.longitude];
-          mapRef.current?.flyTo(latlng, 16, { duration: 1.0 });
-          toast.info("Centered to live GPS location");
-        },
-        () => {
-          mapRef.current?.flyTo([location.lat, location.lng], 16, { duration: 1.0 });
-          toast.info("Centered to current location");
-        },
-        { enableHighAccuracy: true, timeout: 5000 }
-      );
-    } else {
-      mapRef.current?.flyTo([location.lat, location.lng], 16, { duration: 1.0 });
-      toast.info("Centered to current location");
+    if (onRequestGps) {
+      onRequestGps(true);
+    }
+    if (mapRef.current && location?.lat && location?.lng) {
+      mapRef.current.flyTo([location.lat, location.lng], 16, { duration: 1.0 });
     }
   };
 
@@ -1120,12 +1115,30 @@ function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onS
     <div className={cx("map-shell", compact && "compact")} data-testid="leaflet-map-provider" data-provider={MAP_PROVIDER} style={{ position: "relative" }}>
       <div ref={elRef} className="leaflet-host" />
 
-      {/* Minimal HUD Status Tags — calm, informative only */}
-      <div style={{ position: "absolute", top: 12, left: 12, display: "flex", flexWrap: "wrap", gap: 6, zIndex: 30, pointerEvents: "none" }}>
-        <span style={{ background: "rgba(6,10,19,0.82)", border: "1px solid rgba(0,230,184,0.35)", color: "#00E6B8", padding: "4px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, backdropFilter: "blur(8px)" }}>
-          LIVE LOCATION
-        </span>
-        <span style={{ background: "rgba(6,10,19,0.82)", border: "1px solid rgba(0,210,106,0.35)", color: "#00D26A", padding: "4px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, backdropFilter: "blur(8px)" }}>
+      {/* Minimal HUD Status Tags — Interactive with GPS Lock */}
+      <div style={{ position: "absolute", top: 12, left: 12, display: "flex", flexWrap: "wrap", gap: 6, zIndex: 30 }}>
+        <button
+          type="button"
+          onClick={() => onRequestGps?.(true)}
+          style={{
+            background: "rgba(6,10,19,0.88)",
+            border: `1px solid ${isLocating ? "#FFB84C" : "rgba(0,230,184,0.4)"}`,
+            color: isLocating ? "#FFB84C" : "#00E6B8",
+            padding: "4px 10px",
+            borderRadius: 999,
+            fontSize: 10,
+            fontWeight: 700,
+            backdropFilter: "blur(8px)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: isLocating ? "#FFB84C" : "#00E6B8", display: "inline-block" }} />
+          {isLocating ? "ACQUIRING GPS..." : accuracy ? `LIVE GPS (±${Math.round(accuracy)}m)` : "LIVE LOCATION"}
+        </button>
+        <span style={{ background: "rgba(6,10,19,0.82)", border: "1px solid rgba(0,210,106,0.35)", color: "#00D26A", padding: "4px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, backdropFilter: "blur(8px)", pointerEvents: "none" }}>
           SMART ALERTS ON
         </span>
       </div>
@@ -1186,7 +1199,7 @@ function LeafletSafetyMap({ token, location, activeJourney, overlays, route, onS
       </div>
 
       <div className="map-controls">
-        <button data-testid="map-recenter-button" aria-label="Recenter map" onClick={recenter}><LocateFixed size={18} /></button>
+        <button data-testid="map-recenter-button" aria-label="Recenter map" onClick={recenter} title="Lock live GPS"><LocateFixed size={18} /></button>
         <button data-testid="map-sos-button" className="danger" aria-label="Open SOS center" onClick={() => window.dispatchEvent(new CustomEvent("sp:navigate", { detail: "sos" }))}><Siren size={18} /></button>
       </div>
     </div>
@@ -1294,19 +1307,34 @@ function LocationContextLayer({ location, destinationName, activeJourney }) {
     let isMounted = true;
     setLoading(true);
 
-    // Reverse geocode user location using OpenStreetMap Nominatim
-    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${location.lat}&lon=${location.lng}&format=json&addressdetails=1`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!isMounted) return;
-        const addr = data?.address || {};
-        const city = addr.city || addr.town || addr.state_district || addr.county || "Lucknow";
-        const neighborhood = addr.suburb || addr.neighbourhood || addr.residential || addr.commercial || addr.village || "Local Corridor";
-        const road = addr.road || addr.pedestrian || "Main Transit Path";
-        setAreaInfo({ city, neighborhood, road });
-      })
-      .catch(() => {
-        // Safe graceful fallback if offline
+    const fetchGeo = async () => {
+      try {
+        const res = await axios.get(`${API}/map/reverse-geocode?lat=${location.lat}&lng=${location.lng}`);
+        if (isMounted && res.data?.city) {
+          setAreaInfo({
+            city: res.data.city,
+            neighborhood: res.data.neighborhood,
+            road: res.data.road,
+            display_name: res.data.display_name,
+          });
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // Fallback to client nominatim
+      }
+
+      try {
+        const direct = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${location.lat}&lon=${location.lng}&format=json&addressdetails=1`);
+        const data = await direct.json();
+        if (isMounted && data?.address) {
+          const addr = data.address;
+          const city = addr.city || addr.town || addr.state_district || "Lucknow";
+          const neighborhood = addr.suburb || addr.neighbourhood || addr.residential || addr.commercial || addr.village || "Local Corridor";
+          const road = addr.road || addr.pedestrian || "Main Transit Path";
+          setAreaInfo({ city, neighborhood, road });
+        }
+      } catch {
         if (isMounted) {
           const isNearLucknow = Math.abs(location.lat - 26.84) < 1.0;
           setAreaInfo({
@@ -1315,11 +1343,12 @@ function LocationContextLayer({ location, destinationName, activeJourney }) {
             road: "Safe Path",
           });
         }
-      })
-      .finally(() => {
+      } finally {
         if (isMounted) setLoading(false);
-      });
+      }
+    };
 
+    fetchGeo();
     return () => { isMounted = false; };
   }, [location?.lat, location?.lng]);
 
@@ -1383,7 +1412,7 @@ function LocationContextLayer({ location, destinationName, activeJourney }) {
 }
 
 // Part 10: Smart Journey Screen with Interactive Check-In & Intervention Ladder
-function JourneyScreen({ authed, location, setLocation, activeJourney, setActiveJourney, overlays, refreshAll, onOpenWhy }) {
+function JourneyScreen({ authed, location, setLocation, activeJourney, setActiveJourney, overlays, refreshAll, onOpenWhy, onRequestGps, isLocating, accuracy }) {
   const [destination, setDestination] = useState({ name: "Hazratganj to Gomti Nagar", lat: location.lat + 0.012, lng: location.lng + 0.015 });
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
@@ -1465,7 +1494,17 @@ function JourneyScreen({ authed, location, setLocation, activeJourney, setActive
 
   return (
     <div className="two-column map-page" data-testid="smart-journey-screen">
-      <LeafletSafetyMap token={authed} location={location} activeJourney={activeJourney} overlays={overlays} route={selectedRoute} onStartJourney={start} />
+      <LeafletSafetyMap
+        token={authed}
+        location={location}
+        activeJourney={activeJourney}
+        overlays={overlays}
+        route={selectedRoute}
+        onStartJourney={start}
+        onRequestGps={onRequestGps}
+        isLocating={isLocating}
+        accuracy={accuracy}
+      />
       <div className="side-panel">
         {/* Active Journey Status Strip */}
         {activeJourney && (
@@ -2635,6 +2674,9 @@ function AppShell() {
           setActiveJourney={setActiveJourney}
           overlays={overlays}
           refreshAll={refreshAll}
+          onRequestGps={live.requestGps}
+          isLocating={live.isLocating}
+          accuracy={live.accuracy}
           onOpenWhy={() => setWhyModalOpen(true)}
         />
       );

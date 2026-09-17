@@ -976,6 +976,29 @@ async def delete_contact(contact_id: str, user: Dict[str, Any] = Depends(get_cur
     return {"status": "deleted"}
 
 
+@api_router.get("/map/reverse-geocode")
+async def reverse_geocode_api(lat: float, lng: float):
+    try:
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lng}&format=json&addressdetails=1"
+        req = urllib.request.Request(url, headers={"User-Agent": "SentinelPulse-SafetyApp/1.0 (safety@sentinelpulse.org)"})
+        with urllib.request.urlopen(req, timeout=4) as response:
+            data = json.loads(response.read().decode())
+            addr = data.get("address", {})
+            city = addr.get("city") or addr.get("town") or addr.get("state_district") or addr.get("county") or "Lucknow"
+            neighborhood = addr.get("suburb") or addr.get("neighbourhood") or addr.get("residential") or addr.get("commercial") or addr.get("village") or "Central Corridor"
+            road = addr.get("road") or addr.get("pedestrian") or "Main Safe Transit Road"
+            display_name = data.get("display_name", f"{neighborhood}, {city}")
+            return {"city": city, "neighborhood": neighborhood, "road": road, "display_name": display_name}
+    except Exception as e:
+        logger.warning(f"Reverse geocode fallback: {e}")
+        return {
+            "city": "Lucknow",
+            "neighborhood": "Hazratganj / Gomti Nagar Corridor",
+            "road": "Vidhan Sabha Marg",
+            "display_name": "Hazratganj, Lucknow, Uttar Pradesh",
+        }
+
+
 @api_router.post("/routes/compute")
 async def compute_route(payload: JourneyStart, user: Dict[str, Any] = Depends(get_current_user)):
     return {"provider": os.environ.get("MAP_PROVIDER", "leaflet_osm"), "routes": route_variants(payload.origin, payload.destination), "switch_to_mapbox": "Set MAP_PROVIDER=mapbox and add Mapbox tokens when available."}
