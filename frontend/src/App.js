@@ -678,7 +678,7 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
     <motion.div className="dashboard-grid" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
 
       {/* Hero Status Card */}
-      <GlassCard className="hero-shield" testId="home-ai-shield-card" style={{ padding: "22px", gridColumn: "span 12" }}>
+      <GlassCard className="hero-shield" testId="home-ai-shield-card" style={{ padding: "22px" }}>
         {/* Header row: greeting + status */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -756,7 +756,7 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
 
       {/* Check-In Prompt when Risk is Elevated */}
       {riskScore >= 45 && (
-        <div className={cx("glass-card checkin-prompt-card", riskScore >= 75 ? "danger" : "watch")} data-testid="checkin-prompt-card" style={{ gridColumn: "span 12" }}>
+        <div className={cx("glass-card checkin-prompt-card wide", riskScore >= 75 ? "danger" : "watch")} data-testid="checkin-prompt-card">
           <div className="prompt-header">
             <AlertTriangle size={22} />
             <div>
@@ -779,7 +779,7 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
       )}
 
       {/* Protection Status */}
-      <GlassCard className="status-stack" testId="home-status-card" style={{ gridColumn: "span 4" }}>
+      <GlassCard className="status-stack" testId="home-status-card">
         <p className="eyebrow" style={{ margin: "0 0 12px" }}>Protection Status</p>
         <StatusDot state="safe" label="High-Precision GPS Active" />
         <StatusDot state="safe" label="Local Deterministic Engine Active" />
@@ -788,7 +788,7 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
       </GlassCard>
 
       {/* Signal Monitoring & Trend Area */}
-      <GlassCard className="chart-card" testId="home-risk-trend-card" style={{ gridColumn: "span 8" }}>
+      <GlassCard className="chart-card" testId="home-risk-trend-card">
         <div className="section-head">
           <div>
             <p className="eyebrow">Continuous Signal Monitoring</p>
@@ -825,7 +825,7 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
       </GlassCard>
 
       {/* Daily AI Insight Card */}
-      <GlassCard className="insight-card" testId="home-ai-insight-card" style={{ gridColumn: "span 6" }}>
+      <GlassCard className="insight-card" testId="home-ai-insight-card">
         <Sparkles size={20} style={{ color: "#00E6B8", marginBottom: 8 }} />
         <p className="eyebrow">Daily Safety Insight</p>
         <h3>{insight?.provider === "gemini" ? "AI Contextual Insight" : "Local Safety Engine Insight"}</h3>
@@ -836,7 +836,7 @@ function HomeDashboard({ data, onNavigate, onSOS, onRiskScan, insight, riskLoadi
       </GlassCard>
 
       {/* Recent Activity Timeline Preview */}
-      <GlassCard className="recent-activity-card" testId="home-recent-activity" style={{ gridColumn: "span 6" }}>
+      <GlassCard className="recent-activity-card" testId="home-recent-activity">
         <Clock size={20} style={{ color: "#00E6B8", marginBottom: 8 }} />
         <p className="eyebrow">Recent Safety Activity</p>
         <h3>Activity Timeline</h3>
@@ -859,7 +859,7 @@ function LiveProtectionScreen({ activeJourney, dashboard, onNavigate, onCheckIn,
   if (!activeJourney) {
     return (
       <div className="dashboard-grid" data-testid="live-protection-screen">
-        <GlassCard style={{ gridColumn: "span 12", textAlign: "center", padding: "48px 32px" }}>
+        <GlassCard className="wide" style={{ textAlign: "center", padding: "48px 32px" }}>
           <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(0,230,184,0.12)", border: "1px solid rgba(0,230,184,0.25)", display: "grid", placeItems: "center", margin: "0 auto 16px" }}>
             <Activity size={28} style={{ color: "#00E6B8" }} />
           </div>
@@ -889,7 +889,7 @@ function LiveProtectionScreen({ activeJourney, dashboard, onNavigate, onCheckIn,
   return (
     <div className="dashboard-grid" data-testid="live-protection-screen">
       {/* Status Header */}
-      <GlassCard style={{ gridColumn: "span 12", padding: "20px 22px" }}>
+      <GlassCard className="wide" style={{ padding: "20px 22px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ width: 10, height: 10, borderRadius: "50%", background: toneColor, boxShadow: `0 0 8px ${toneColor}`, animation: "breathe 2s ease-in-out infinite" }} />
@@ -1870,7 +1870,7 @@ function PrivacyCenter({ privacy, authed, refreshAll }) {
 
   return (
     <div className="dashboard-grid" data-testid="privacy-center-screen">
-      <GlassCard testId="privacy-principles-card" style={{ gridColumn: "span 12" }}>
+      <GlassCard testId="privacy-principles-card" className="wide">
         <div className="section-head">
           <IconBadge icon={Lock}>Privacy-First Architecture</IconBadge>
         </div>
@@ -1880,8 +1880,8 @@ function PrivacyCenter({ privacy, authed, refreshAll }) {
         </p>
         
         {/* Honest Architecture Table */}
-        <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.05)", overflow: "hidden", marginBottom: 32 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
+        <div className="table-responsive-wrapper" style={{ background: "rgba(0,0,0,0.2)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.05)", overflowX: "auto", marginBottom: 32 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13, minWidth: 520 }}>
             <thead>
               <tr style={{ background: "rgba(255,255,255,0.04)" }}>
                 <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--sp-fg)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>Data Type</th>
@@ -1908,7 +1908,7 @@ function PrivacyCenter({ privacy, authed, refreshAll }) {
           </table>
         </div>
 
-        <div className="button-row" style={{ display: "flex", gap: 12 }}>
+        <div className="button-row" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <PrimaryButton secondary icon={Trash2} onClick={() => clearData("derived")}>Purge Derived Signals</PrimaryButton>
           <PrimaryButton danger icon={Trash2} onClick={() => clearData("all")}>Purge All Records</PrimaryButton>
         </div>
@@ -1922,7 +1922,7 @@ function InsightsScreen({ insight, getInsight, activeJourney }) {
   return (
     <div className="dashboard-grid" data-testid="insights-screen">
       {/* Journey Stats Block */}
-      <GlassCard className="wide" style={{ gridColumn: "span 12" }}>
+      <GlassCard className="wide">
         <div className="section-head">
           <IconBadge icon={BarChart3}>Journey Telemetry</IconBadge>
         </div>
@@ -1944,7 +1944,7 @@ function InsightsScreen({ insight, getInsight, activeJourney }) {
         </div>
       </GlassCard>
 
-      <GlassCard className="wide" testId="insights-detail-card" style={{ gridColumn: "span 12" }}>
+      <GlassCard className="wide" testId="insights-detail-card">
         <div className="section-head">
           <IconBadge icon={Sparkles}>Responsible AI Architecture</IconBadge>
         </div>
@@ -1986,7 +1986,7 @@ function InsightsScreen({ insight, getInsight, activeJourney }) {
 function SettingsScreen({ user, settings, authed, refreshAll, onLogout, isPhoneFrame, setIsPhoneFrame }) {
   return (
     <div className="dashboard-grid settings-layout" data-testid="settings-screen">
-      <GlassCard testId="user-profile-settings" className="settings-member-card" style={{ gridColumn: "span 12", maxWidth: 820 }}>
+      <GlassCard testId="user-profile-settings" className="settings-member-card wide" style={{ maxWidth: 820 }}>
         <div className="section-head">
           <IconBadge icon={UserCheck}>Member Account</IconBadge>
         </div>
