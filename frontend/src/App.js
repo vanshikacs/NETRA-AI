@@ -1166,6 +1166,58 @@ function SmartMapScreen({ authed, location, onStartJourney }) {
   );
 }
 
+// Separate Informational Layer: Location Context Near Route
+function LocationContextLayer() {
+  const contextItems = [
+    {
+      id: "road-1",
+      icon: "🟠",
+      title: "Road disruption reported nearby",
+      detail: "1.2 km ahead · 32 min ago · Public source",
+      tone: "caution"
+    },
+    {
+      id: "comm-1",
+      icon: "🟡",
+      title: "Community report",
+      detail: "800 m away · 1 hr ago · Unverified",
+      tone: "info"
+    },
+  ];
+
+  return (
+    <GlassCard className="location-context-card" testId="location-context-card" style={{ marginTop: 14 }}>
+      <div className="section-head" style={{ marginBottom: 10 }}>
+        <IconBadge icon={Compass} tone="warning">Location Context Layer</IconBadge>
+        <span className="informational-tag">Informational Only</span>
+      </div>
+      
+      <h3 style={{ fontSize: 16, marginBottom: 4 }}>Recent context near your route</h3>
+      <p style={{ fontSize: 12, color: "var(--sp-fg-muted)", marginBottom: 14 }}>
+        Public disruptions and community updates around this corridor.
+      </p>
+
+      <div className="context-items-list" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {contextItems.map((item) => (
+          <div key={item.id} className={cx("context-item-row", item.tone)}>
+            <span className="context-emoji">{item.icon}</span>
+            <div className="context-item-content">
+              <strong>{item.title}</strong>
+              <small>{item.detail}</small>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <span style={{ fontSize: 11, color: "var(--sp-fg-subtle)", fontStyle: "italic", lineHeight: 1.4, display: "block" }}>
+          * Context is informational and does not determine your personal safety assessment.
+        </span>
+      </div>
+    </GlassCard>
+  );
+}
+
 // Part 10: Smart Journey Screen with Interactive Check-In & Intervention Ladder
 function JourneyScreen({ authed, location, setLocation, activeJourney, setActiveJourney, overlays, refreshAll, onOpenWhy }) {
   const [destination, setDestination] = useState({ name: "University Campus to Home", lat: location.lat + 0.015, lng: location.lng + 0.018 });
@@ -1333,6 +1385,9 @@ function JourneyScreen({ authed, location, setLocation, activeJourney, setActive
             ))}
           </div>
         )}
+
+        {/* Location Context Layer (Separate Informational Layer) */}
+        <LocationContextLayer />
       </div>
 
       {completedSummary && (

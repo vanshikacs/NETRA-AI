@@ -289,6 +289,55 @@ label { color: var(--sp-fg-muted); font-size: 13px; font-weight: 700; display: g
   margin-top: 20px;
 }
 
+/* Location Context Layer */
+.location-context-card {
+  border: 1px solid rgba(255, 184, 76, 0.25);
+  background: rgba(11, 18, 32, 0.7);
+  backdrop-filter: blur(20px);
+}
+.informational-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--sp-fg-subtle);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 3px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.context-item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  transition: all 0.2s ease;
+}
+.context-item-row.caution {
+  background: rgba(255, 184, 76, 0.06);
+  border-color: rgba(255, 184, 76, 0.2);
+}
+.context-emoji {
+  font-size: 16px;
+  line-height: 1.2;
+}
+.context-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.context-item-content strong {
+  font-size: 13px;
+  color: var(--sp-fg);
+}
+.context-item-content small {
+  font-size: 11px;
+  color: var(--sp-fg-muted);
+}
+
 /* Mobile Bottom Navigation */
 .bottom-nav {
   display: none;
