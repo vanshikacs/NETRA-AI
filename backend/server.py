@@ -266,6 +266,8 @@ def compute_risk(signals: Dict[str, Any], sensitivity: float = 0.72, profile: Op
         "confidence": conf_val,
         "confidence_label": confidence_label,
         "evidence_quality": "Sensor baseline verified",
+        "confirmation_required": score >= 65,
+        "confirmation_window_seconds": 30,
         "factors": sorted_factors,
         "privacy": {
             "raw_sensor_policy": "Raw motion/audio never leaves device; this API stores derived flags only.",
