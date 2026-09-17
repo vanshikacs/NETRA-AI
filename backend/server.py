@@ -43,17 +43,21 @@ db = client[DB_NAME]
 app = FastAPI(title="SentinelPulse API", version="1.0.0")
 api_router = APIRouter(prefix="/api")
 
-cors_origins_env = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:5173")
+cors_origins_env = os.environ.get("CORS_ORIGINS", "*")
 cors_origins_list = [orig.strip() for orig in cors_origins_env.split(",") if orig.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=cors_origins_list,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origins=cors_origins_list if cors_origins_env != "*" else [],
+    allow_origin_regex=r"^https?://.*$",
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/")
+async def root_health():
+    return {"status": "ok", "message": "SentinelPulse API online", "mode": "privacy-first edge relay"}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("sentinelpulse")

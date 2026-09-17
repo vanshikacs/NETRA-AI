@@ -83,7 +83,7 @@ import {
   YAxis,
 } from "recharts";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:8000";
+const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/+$/, "");
 const API = `${BACKEND_URL}/api`;
 const MAP_PROVIDER = process.env.REACT_APP_MAP_PROVIDER || "leaflet_osm";
 const DEFAULT_LOCATION = { lat: 28.6139, lng: 77.209 };
