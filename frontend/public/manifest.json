@@ -1,0 +1,17 @@
+{
+  "short_name": "SentinelPulse",
+  "name": "SentinelPulse - Predictive Privacy-First Safety",
+  "description": "AI that protects you before you ask for help.",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#060A13",
+  "background_color": "#060A13",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='44' fill='%23060A13'/%3E%3Cpath d='M96 26l54 20v42c0 42-25 69-54 82-29-13-54-40-54-82V46l54-20z' fill='%2300E6B8'/%3E%3Cpath d='M74 96l15 15 32-39' stroke='%23060A13' stroke-width='14' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}
