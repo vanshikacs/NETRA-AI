@@ -769,12 +769,17 @@ function SafeCooldownBadge({ cooldownUntil }) {
 function DemoToolbar({ onSimulate, onReset, activeScenario, loading }) {
   const [open, setOpen] = useState(false);
   const scenarios = [
-    { id: "route_deviation",  label: "1. Minor Deviation (Silent 48)" },
-    { id: "high_risk",        label: "2. Compound High Risk (Sustained 78)" },
-    { id: "safe_checkin",     label: "3. Safe Confirmation (5m Cooldown)" },
-    { id: "elevated_risk",    label: "4. User Requests Help (Immediate)" },
-    { id: "sos",              label: "5. Manual SOS Trigger (Hold 1.5s)" },
-    { id: "normal_journey",   label: "6. Normal Journey Baseline (12)" },
+    { id: "normal_journey",   label: "1. Normal Baseline (Score 12 · Silent)" },
+    { id: "route_deviation",  label: "2. Route Deviation (Score 48 · Silent)" },
+    { id: "prolonged_stop",   label: "3. Prolonged Stop Anomaly" },
+    { id: "unusual_duration", label: "4. Unusual Duration Anomaly" },
+    { id: "high_risk_area",   label: "5. High-Risk Zone Entry" },
+    { id: "motion_anomaly",   label: "6. Motion / Impact Anomaly" },
+    { id: "elevated_risk",    label: "7. User Requests Help (Immediate)" },
+    { id: "high_risk",        label: "8. Compound High Risk (30s Modal)" },
+    { id: "combined_incident",label: "9. Multi-Signal Incident (Escalation)" },
+    { id: "safe_checkin",     label: "10. User Confirmed Safe (5m Cooldown)" },
+    { id: "sos",              label: "11. Manual SOS Trigger (Hold 1.5s)" },
   ];
 
   return (
@@ -3027,7 +3032,7 @@ function AppShell() {
 
       if (scenarioId === "sos") {
         setView("sos");
-      } else if (scenarioId === "high_risk" || scenarioId === "elevated_risk") {
+      } else if (scenarioId === "high_risk" || scenarioId === "elevated_risk" || scenarioId === "combined_incident") {
         // Trigger high risk check-in modal directly for interactive testing
         triggerHighRiskCheckin(res.data.reasons);
       } else if (scenarioId === "safe_checkin") {
