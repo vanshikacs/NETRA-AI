@@ -1,4 +1,6 @@
 {
+  "buildCommand": "yarn build",
+  "outputDirectory": "build",
   "rewrites": [
     {
       "source": "/api/(.*)",
