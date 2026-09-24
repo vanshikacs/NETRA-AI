@@ -2398,5 +2398,60 @@ label { color: var(--sp-fg-muted); font-size: 13px; font-weight: 700; display: g
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
 
+.netra-kpi-card {
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.netra-kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(99, 102, 241, 0.45) !important;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.12);
+}
+
+.netra-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--sp-fg-muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.netra-tab-btn.active {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: #e0e7ff;
+}
+
+.netra-lead-card {
+  transition: all 0.18s ease;
+}
+.netra-lead-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 184, 76, 0.45) !important;
+}
+
+/* Touch-Optimized Bottom Sheet for Mobile */
+@media (max-width: 768px) {
+  .left-rail {
+    display: none;
+  }
+  .main-content {
+    margin-left: 0;
+    padding: 14px 14px 90px;
+  }
+  .mobile-only {
+    display: grid;
+  }
+}
