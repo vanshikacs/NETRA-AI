@@ -26,9 +26,9 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 MONGO_URL = os.environ.get("MONGO_URL")
-DB_NAME = os.environ.get("DB_NAME", "sentinelpulse")
-JWT_SECRET = os.environ.get("JWT_SECRET", "sentinelpulse-development-secret")
-ENCRYPTION_SECRET = os.environ.get("ENCRYPTION_SECRET", "sentinelpulse-vault-secret")
+DB_NAME = os.environ.get("DB_NAME", "netra_ai")
+JWT_SECRET = os.environ.get("JWT_SECRET", "netra-ai-development-secret-2026")
+ENCRYPTION_SECRET = os.environ.get("ENCRYPTION_SECRET", "netra-ai-vault-secret-2026")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY") or GEMINI_API_KEY
 ACCESS_TTL_MINUTES = 60 * 24 * 30  # 30 days for robust continuous judging session
@@ -40,7 +40,7 @@ if not MONGO_URL:
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
-app = FastAPI(title="SentinelPulse API", version="1.0.0")
+app = FastAPI(title="NETRA-AI Intelligence API", version="2.0.0")
 api_router = APIRouter(prefix="/api")
 
 cors_origins_env = os.environ.get("CORS_ORIGINS", "*")
