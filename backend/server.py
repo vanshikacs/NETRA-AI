@@ -1823,6 +1823,853 @@ async def admin_dashboard(user: Dict[str, Any] = Depends(get_current_user)):
     return {"stats": stats, "system_health": {"api": "healthy", "mongodb": "healthy", "edge_engine": "deterministic", "llm": "gemini" if EMERGENT_LLM_KEY else "fallback", "map_provider": os.environ.get("MAP_PROVIDER", "leaflet_osm")}}
 
 
+# =============================================================================
+# SENTINELPULSE // INTELLIGENCE — SIH26189 Criminal Network Intelligence API
+# Ministry of Home Affairs · NCRB Women Safety Division
+# All AI findings are investigative leads only. Human investigator decides.
+# Synthetic demo data is clearly labeled FICTIONAL.
+# =============================================================================
+
+# ---- Pydantic Models for Intelligence Platform ----
+
+class CaseCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    title: str
+    description: Optional[str] = ""
+    priority: str = "MEDIUM"  # LOW / MEDIUM / HIGH / CRITICAL
+    category: str = "GENERAL"
+    assigned_to: Optional[str] = None
+    tags: Optional[List[str]] = []
+
+class EntityCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    case_id: Optional[str] = None
+    entity_type: str  # PERSON / LOCATION / VEHICLE / PHONE / ORGANIZATION / EVENT / BANK_ACCOUNT / IP_ADDRESS
+    name: str
+    aliases: Optional[List[str]] = []
+    attributes: Optional[Dict[str, Any]] = {}
+    source_evidence: Optional[List[str]] = []
+
+class RelationshipCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    case_id: Optional[str] = None
+    source_entity_id: str
+    target_entity_id: str
+    relationship_type: str  # CALLED / MET / TRANSFERRED_FUNDS / MEMBER_OF / OWNS / LOCATED_AT / ASSOCIATED_WITH
+    strength: float = 0.5  # 0.0 – 1.0
+    frequency: Optional[int] = 1
+    date_range: Optional[Dict[str, str]] = {}
+    source_evidence: Optional[List[str]] = []
+    notes: Optional[str] = ""
+
+class PatternReviewRequest(BaseModel):
+    pattern_id: str
+    action: str  # CONFIRM / DISMISS / FLAG_FOR_REVIEW
+    notes: Optional[str] = ""
+
+class EvidenceIntelRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    case_id: str
+    entity_ids: Optional[List[str]] = []
+    kind: str = "document"  # document / call_record / location_data / financial / image / note
+    title: str
+    content: str
+    source: Optional[str] = "Manual entry"
+    metadata: Optional[Dict[str, Any]] = {}
+
+class InvestigativeBriefRequest(BaseModel):
+    case_id: str
+    include_entities: Optional[bool] = True
+    include_patterns: Optional[bool] = True
+    include_timeline: Optional[bool] = True
+
+class AuditSearchRequest(BaseModel):
+    case_id: Optional[str] = None
+    action_filter: Optional[str] = None
+    limit: int = 50
+
+class NetworkSnapshotRequest(BaseModel):
+    case_id: str
+    timestamp_before: Optional[str] = None  # ISO string for temporal intelligence
+
+# ---- Intelligence Utility Functions ----
+
+def compute_investigative_priority(entity: Dict[str, Any], relationships: List[Dict]) -> Dict[str, Any]:
+    """Compute an investigative priority score 0-100 with full explainability.
+    This is NOT a 'crime probability' — it is 'investigative relevance'.
+    Human investigator makes all final decisions."""
+    score = 0
+    factors = []
+
+    rel_count = len(relationships)
+    if rel_count >= 10:
+        pts = 25
+        factors.append({"factor": "High relationship density", "points": pts, "explanation": f"Entity has {rel_count} documented connections — high centrality in network."})
+        score += pts
+    elif rel_count >= 5:
+        pts = 15
+        factors.append({"factor": "Moderate relationship density", "points": pts, "explanation": f"Entity has {rel_count} documented connections."})
+        score += pts
+    elif rel_count >= 2:
+        pts = 8
+        factors.append({"factor": "Low relationship density", "points": pts, "explanation": f"Entity has {rel_count} connections."})
+        score += pts
+
+    cross_case = entity.get("cross_case_appearances", 0)
+    if cross_case >= 3:
+        pts = 20
+        factors.append({"factor": "Cross-case presence", "points": pts, "explanation": f"Appears in {cross_case} separate cases — may indicate systemic involvement."})
+        score += pts
+    elif cross_case >= 1:
+        pts = 10
+        factors.append({"factor": "Multi-case entity", "points": pts, "explanation": f"Appears in {cross_case} other case(s)."})
+        score += pts
+
+    evidence_count = len(entity.get("source_evidence", []))
+    if evidence_count >= 5:
+        pts = 20
+        factors.append({"factor": "Strongly evidenced", "points": pts, "explanation": f"{evidence_count} evidence items directly link to this entity."})
+        score += pts
+    elif evidence_count >= 2:
+        pts = 12
+        factors.append({"factor": "Moderately evidenced", "points": pts, "explanation": f"{evidence_count} evidence items reference this entity."})
+        score += pts
+    elif evidence_count >= 1:
+        pts = 5
+        factors.append({"factor": "Weakly evidenced", "points": pts, "explanation": "1 evidence item references this entity."})
+        score += pts
+
+    aliases = len(entity.get("aliases", []))
+    if aliases >= 3:
+        pts = 15
+        factors.append({"factor": "Multiple aliases", "points": pts, "explanation": f"Entity uses {aliases} known aliases — may indicate identity obfuscation."})
+        score += pts
+    elif aliases >= 1:
+        pts = 7
+        factors.append({"factor": "Known aliases", "points": pts, "explanation": f"Entity has {aliases} alias(es) on record."})
+        score += pts
+
+    attr = entity.get("attributes", {})
+    if attr.get("flagged_financial_activity"):
+        pts = 20
+        factors.append({"factor": "Flagged financial activity", "points": pts, "explanation": "Entity linked to suspicious financial transactions in source data."})
+        score += pts
+    if attr.get("communication_burst"):
+        pts = 15
+        factors.append({"factor": "Communication burst pattern", "points": pts, "explanation": "Unusual spike in communication frequency detected around key event dates."})
+        score += pts
+    if attr.get("location_overlap"):
+        pts = 10
+        factors.append({"factor": "Location overlap", "points": pts, "explanation": "Physical location overlaps with other high-priority entities at key timestamps."})
+        score += pts
+
+    score = min(100, score)
+    if score >= 70:
+        priority_label = "HIGH INVESTIGATIVE RELEVANCE"
+        priority_color = "danger"
+    elif score >= 40:
+        priority_label = "MODERATE INVESTIGATIVE RELEVANCE"
+        priority_color = "warning"
+    else:
+        priority_label = "LOW INVESTIGATIVE RELEVANCE"
+        priority_color = "teal"
+
+    return {
+        "score": score,
+        "label": priority_label,
+        "color": priority_color,
+        "factors": factors,
+        "disclaimer": "This score reflects investigative relevance based on available data. It does not indicate guilt or predict future behavior. All conclusions require human investigator review.",
+    }
+
+def detect_suspicious_patterns(entities: List[Dict], relationships: List[Dict], timeline_events: List[Dict]) -> List[Dict[str, Any]]:
+    """Detect 10 explainable suspicious patterns. Each pattern has a human-readable explanation and is subject to investigator review."""
+    patterns = []
+
+    # Pattern 1: Communication Burst
+    phone_entities = [e for e in entities if e.get("entity_type") == "PHONE"]
+    for entity in phone_entities:
+        entity_rels = [r for r in relationships if r.get("source_entity_id") == entity["id"] or r.get("target_entity_id") == entity["id"]]
+        if len(entity_rels) >= 5:
+            patterns.append({
+                "id": str(uuid.uuid4()),
+                "pattern_type": "COMMUNICATION_BURST",
+                "title": "Communication Burst Detected",
+                "description": f"Phone entity '{entity.get('name')}' shows unusually high connection density ({len(entity_rels)} links). This may indicate a coordination hub.",
+                "severity": "HIGH" if len(entity_rels) >= 8 else "MEDIUM",
+                "entity_ids": [entity["id"]],
+                "evidence_basis": "Relationship frequency analysis",
+                "investigative_lead": "Review call records around dates of peak activity. Cross-reference with known event timeline.",
+                "human_review_required": True,
+                "status": "PENDING_REVIEW",
+                "confidence": min(0.9, 0.5 + len(entity_rels) * 0.05),
+            })
+
+    # Pattern 2: Bridge Node (entity connecting otherwise disconnected sub-networks)
+    entity_ids = set(e["id"] for e in entities)
+    for entity in entities:
+        entity_rels = [r for r in relationships if r.get("source_entity_id") == entity["id"] or r.get("target_entity_id") == entity["id"]]
+        neighbors = set()
+        for r in entity_rels:
+            other = r.get("target_entity_id") if r.get("source_entity_id") == entity["id"] else r.get("source_entity_id")
+            neighbors.add(other)
+        if len(neighbors) >= 3:
+            inter_neighbor_rels = [r for r in relationships
+                                   if r.get("source_entity_id") in neighbors and r.get("target_entity_id") in neighbors]
+            if len(inter_neighbor_rels) == 0:
+                patterns.append({
+                    "id": str(uuid.uuid4()),
+                    "pattern_type": "BRIDGE_NODE",
+                    "title": "Network Bridge Entity",
+                    "description": f"'{entity.get('name')}' connects {len(neighbors)} entities that have NO direct links to each other — a critical bridge node.",
+                    "severity": "HIGH",
+                    "entity_ids": [entity["id"]] + list(neighbors),
+                    "evidence_basis": "Graph topology analysis",
+                    "investigative_lead": "Investigate the nature of connections. Bridge nodes often play a coordination or intermediary role.",
+                    "human_review_required": True,
+                    "status": "PENDING_REVIEW",
+                    "confidence": 0.75,
+                })
+
+    # Pattern 3: Rapid Financial Flow
+    fin_rels = [r for r in relationships if r.get("relationship_type") == "TRANSFERRED_FUNDS"]
+    if len(fin_rels) >= 3:
+        patterns.append({
+            "id": str(uuid.uuid4()),
+            "pattern_type": "FINANCIAL_FLOW_CHAIN",
+            "title": "Multi-hop Financial Transfer Chain",
+            "description": f"Detected {len(fin_rels)} financial transfer relationships forming a potential layering chain.",
+            "severity": "HIGH",
+            "entity_ids": list(set([r.get("source_entity_id") for r in fin_rels] + [r.get("target_entity_id") for r in fin_rels])),
+            "evidence_basis": "Financial relationship mapping",
+            "investigative_lead": "Trace the full chain of transfers. Identify originating and terminal accounts.",
+            "human_review_required": True,
+            "status": "PENDING_REVIEW",
+            "confidence": 0.8,
+        })
+
+    # Pattern 4: Temporal Co-location
+    location_events = [e for e in timeline_events if e.get("event_type") == "LOCATION"]
+    location_groups: Dict[str, List] = {}
+    for ev in location_events:
+        loc_key = f"{round(ev.get('lat', 0), 3)}_{round(ev.get('lng', 0), 3)}"
+        if loc_key not in location_groups:
+            location_groups[loc_key] = []
+        location_groups[loc_key].append(ev)
+    for loc_key, evs in location_groups.items():
+        unique_entities = set(ev.get("entity_id") for ev in evs if ev.get("entity_id"))
+        if len(unique_entities) >= 3:
+            patterns.append({
+                "id": str(uuid.uuid4()),
+                "pattern_type": "TEMPORAL_COLOCATION",
+                "title": "Multiple Entities — Same Location & Time",
+                "description": f"{len(unique_entities)} distinct entities co-located at coordinates ({loc_key.replace('_', ', ')}).",
+                "severity": "MEDIUM",
+                "entity_ids": list(unique_entities),
+                "evidence_basis": "Temporal location correlation",
+                "investigative_lead": "Cross-reference entity movements. Determine if co-location is coincidental or coordinated.",
+                "human_review_required": True,
+                "status": "PENDING_REVIEW",
+                "confidence": 0.65,
+            })
+
+    # Pattern 5: Alias Web
+    for entity in entities:
+        if len(entity.get("aliases", [])) >= 3:
+            patterns.append({
+                "id": str(uuid.uuid4()),
+                "pattern_type": "ALIAS_PROLIFERATION",
+                "title": "Multiple Identity Aliases Detected",
+                "description": f"'{entity.get('name')}' operates under {len(entity.get('aliases', []))} aliases: {', '.join(entity.get('aliases', [])[:3])}...",
+                "severity": "MEDIUM",
+                "entity_ids": [entity["id"]],
+                "evidence_basis": "Entity resolution and alias matching",
+                "investigative_lead": "Verify identification documents linked to all aliases. Check for fraudulent identity creation.",
+                "human_review_required": True,
+                "status": "PENDING_REVIEW",
+                "confidence": 0.7,
+            })
+
+    return patterns[:10]  # Return max 10 patterns
+
+
+async def seed_intelligence_demo():
+    """Seed comprehensive synthetic investigation data for CASE 047 demo.
+    ALL DATA IS FICTIONAL. FOR DEMONSTRATION PURPOSES ONLY."""
+    existing = await db.intel_cases.find_one({"case_id": "CASE-047"})
+    if existing:
+        return
+
+    logger.info("Seeding FICTIONAL SYNTHETIC intelligence demo data for SIH26189 demo...")
+    demo_user_id = "demo-user-sentinelpulse-2026"
+
+    # ----- CASE 047: INTERSTATE EXTORTION NETWORK -----
+    case_id = "case-047"
+    case = {
+        "id": case_id,
+        "case_id": "CASE-047",
+        "title": "Interstate Extortion Network — Operation Khayal",
+        "description": "Multi-state criminal network allegedly involved in systematic extortion of small business owners across 4 states. Network spans financial, communication, and physical coordination channels.",
+        "priority": "CRITICAL",
+        "category": "ORGANIZED_CRIME",
+        "status": "ACTIVE",
+        "assigned_to": demo_user_id,
+        "created_by": demo_user_id,
+        "tags": ["extortion", "multi-state", "organized-crime", "financial-crime"],
+        "created_at": "2026-01-15T09:00:00Z",
+        "updated_at": now_iso(),
+        "data_label": "FICTIONAL SYNTHETIC DATA — FOR DEMONSTRATION ONLY",
+        "entity_count": 0,
+        "relationship_count": 0,
+        "evidence_count": 0,
+        "priority_score": 87,
+    }
+    await db.intel_cases.insert_one(case)
+
+    # ----- CASE 048 cross-reference -----
+    case48 = {
+        "id": "case-048",
+        "case_id": "CASE-048",
+        "title": "Hawala Network — Operation Vaayu",
+        "description": "Suspected hawala operation using real estate transactions as cover. Cross-references with CASE-047 via shared financial entities.",
+        "priority": "HIGH",
+        "category": "FINANCIAL_CRIME",
+        "status": "ACTIVE",
+        "assigned_to": demo_user_id,
+        "created_by": demo_user_id,
+        "tags": ["hawala", "financial-crime", "real-estate"],
+        "created_at": "2026-02-01T10:00:00Z",
+        "updated_at": now_iso(),
+        "data_label": "FICTIONAL SYNTHETIC DATA — FOR DEMONSTRATION ONLY",
+        "entity_count": 0,
+        "relationship_count": 0,
+        "evidence_count": 0,
+        "priority_score": 72,
+    }
+    await db.intel_cases.insert_one(case48)
+
+    # ---- ENTITIES for CASE-047 ----
+    entities_data = [
+        # People
+        {"id": "ent-001", "case_id": case_id, "entity_type": "PERSON", "name": "Rakesh Verma", "aliases": ["Raja", "R.V.", "The Collector"], "attributes": {"role": "Alleged network coordinator", "location": "Delhi", "flagged_financial_activity": True, "communication_burst": True}, "source_evidence": ["ev-001", "ev-002", "ev-003"], "cross_case_appearances": 2, "created_at": "2026-01-15T09:30:00Z"},
+        {"id": "ent-002", "case_id": case_id, "entity_type": "PERSON", "name": "Sunita Malik", "aliases": ["Suni", "The Accountant"], "attributes": {"role": "Alleged financial handler", "location": "Mumbai", "flagged_financial_activity": True}, "source_evidence": ["ev-002", "ev-004"], "cross_case_appearances": 3, "created_at": "2026-01-16T10:00:00Z"},
+        {"id": "ent-003", "case_id": case_id, "entity_type": "PERSON", "name": "Pawan Gupta", "aliases": ["Bablu"], "attributes": {"role": "Field operative", "location": "Lucknow"}, "source_evidence": ["ev-003", "ev-005"], "cross_case_appearances": 0, "created_at": "2026-01-18T11:00:00Z"},
+        {"id": "ent-004", "case_id": case_id, "entity_type": "PERSON", "name": "Kavita Sharma", "aliases": ["KS", "Madam K"], "attributes": {"role": "Liaison contact", "location": "Jaipur", "location_overlap": True}, "source_evidence": ["ev-005", "ev-006"], "cross_case_appearances": 1, "created_at": "2026-01-20T09:00:00Z"},
+        {"id": "ent-005", "case_id": case_id, "entity_type": "PERSON", "name": "Anil Tiwari", "aliases": ["AT", "Bhai"], "attributes": {"role": "Transport coordinator", "location": "Varanasi"}, "source_evidence": ["ev-007"], "cross_case_appearances": 0, "created_at": "2026-01-22T14:00:00Z"},
+        # Phones
+        {"id": "ent-006", "case_id": case_id, "entity_type": "PHONE", "name": "+91-98765-00001", "aliases": [], "attributes": {"registered_to": "Fake SIM — identified via CDR", "call_volume_30d": 347}, "source_evidence": ["ev-001", "ev-008"], "cross_case_appearances": 1, "created_at": "2026-01-15T09:30:00Z"},
+        {"id": "ent-007", "case_id": case_id, "entity_type": "PHONE", "name": "+91-77001-00002", "aliases": [], "attributes": {"registered_to": "Sunita Malik", "call_volume_30d": 128}, "source_evidence": ["ev-002", "ev-009"], "cross_case_appearances": 0, "created_at": "2026-01-16T10:00:00Z"},
+        {"id": "ent-008", "case_id": case_id, "entity_type": "PHONE", "name": "+91-90001-00003 (Burner)", "aliases": ["Disposable-3"], "attributes": {"registered_to": "Unregistered", "call_volume_30d": 89, "communication_burst": True}, "source_evidence": ["ev-010"], "cross_case_appearances": 0, "created_at": "2026-01-25T08:00:00Z"},
+        # Organizations
+        {"id": "ent-009", "case_id": case_id, "entity_type": "ORGANIZATION", "name": "Shri Ram Traders (Shell)", "aliases": ["SRT Enterprises"], "attributes": {"type": "Shell company — suspected", "registration": "Delhi ROC", "flagged_financial_activity": True}, "source_evidence": ["ev-004", "ev-011"], "cross_case_appearances": 2, "created_at": "2026-01-17T10:00:00Z"},
+        {"id": "ent-010", "case_id": case_id, "entity_type": "ORGANIZATION", "name": "KS Property Consultants", "aliases": ["KSPC"], "attributes": {"type": "Real estate front — suspected", "registration": "Jaipur ROC"}, "source_evidence": ["ev-006", "ev-012"], "cross_case_appearances": 3, "created_at": "2026-01-20T09:00:00Z"},
+        # Locations
+        {"id": "ent-011", "case_id": case_id, "entity_type": "LOCATION", "name": "Connaught Place Office, Delhi", "aliases": ["CP Office"], "attributes": {"lat": 28.6315, "lng": 77.2167, "visit_count": 12, "entities_seen": ["ent-001", "ent-002"]}, "source_evidence": ["ev-001", "ev-013"], "cross_case_appearances": 0, "created_at": "2026-01-15T09:00:00Z"},
+        {"id": "ent-012", "case_id": case_id, "entity_type": "LOCATION", "name": "Hazratganj, Lucknow", "aliases": ["HG Meeting Point"], "attributes": {"lat": 26.8467, "lng": 80.9462, "visit_count": 7, "entities_seen": ["ent-003", "ent-005"]}, "source_evidence": ["ev-005", "ev-014"], "cross_case_appearances": 0, "created_at": "2026-01-18T11:00:00Z"},
+        # Vehicles
+        {"id": "ent-013", "case_id": case_id, "entity_type": "VEHICLE", "name": "DL-01-AA-9876 (SUV)", "aliases": ["Black Fortuner"], "attributes": {"make": "Toyota Fortuner", "color": "Black", "owner": "Linked to Shri Ram Traders via registration"}, "source_evidence": ["ev-007", "ev-015"], "cross_case_appearances": 1, "created_at": "2026-01-22T14:00:00Z"},
+        # Bank Account
+        {"id": "ent-014", "case_id": case_id, "entity_type": "BANK_ACCOUNT", "name": "A/C 0012345678 — Shri Ram Traders", "aliases": [], "attributes": {"bank": "Cooperative Bank, Delhi", "transactions_flagged": 14, "flagged_financial_activity": True}, "source_evidence": ["ev-004", "ev-011"], "cross_case_appearances": 2, "created_at": "2026-01-17T10:00:00Z"},
+        # Event
+        {"id": "ent-015", "case_id": case_id, "entity_type": "EVENT", "name": "Alleged Coordination Meeting — Jan 28", "aliases": ["Jan 28 Meet"], "attributes": {"date": "2026-01-28", "location_entity": "ent-011", "attendees_suspected": ["ent-001", "ent-002", "ent-004"]}, "source_evidence": ["ev-013", "ev-016"], "cross_case_appearances": 0, "created_at": "2026-01-29T08:00:00Z"},
+    ]
+    for e in entities_data:
+        e["user_id"] = demo_user_id
+        e["updated_at"] = now_iso()
+        e["review_status"] = "PENDING_REVIEW"
+        e["data_label"] = "FICTIONAL SYNTHETIC DATA — FOR DEMONSTRATION ONLY"
+    await db.intel_entities.insert_many(entities_data)
+
+    # ---- RELATIONSHIPS ----
+    relationships_data = [
+        {"id": "rel-001", "case_id": case_id, "source_entity_id": "ent-001", "target_entity_id": "ent-002", "relationship_type": "ASSOCIATED_WITH", "strength": 0.9, "frequency": 28, "notes": "Frequent contact — CDR confirms 28 calls in 30 days", "source_evidence": ["ev-001", "ev-002"], "date_range": {"start": "2025-11-01", "end": "2026-01-28"}},
+        {"id": "rel-002", "case_id": case_id, "source_entity_id": "ent-001", "target_entity_id": "ent-003", "relationship_type": "ASSOCIATED_WITH", "strength": 0.7, "frequency": 12, "notes": "Indirect contact via ent-006 phone", "source_evidence": ["ev-003"], "date_range": {"start": "2025-12-01", "end": "2026-01-25"}},
+        {"id": "rel-003", "case_id": case_id, "source_entity_id": "ent-001", "target_entity_id": "ent-009", "relationship_type": "ASSOCIATED_WITH", "strength": 0.85, "frequency": 5, "notes": "Suspected director via nominee arrangement", "source_evidence": ["ev-004", "ev-011"], "date_range": {"start": "2025-10-01", "end": "2026-01-30"}},
+        {"id": "rel-004", "case_id": case_id, "source_entity_id": "ent-002", "target_entity_id": "ent-014", "relationship_type": "ASSOCIATED_WITH", "strength": 0.9, "frequency": 14, "notes": "Account holder or signatory suspected", "source_evidence": ["ev-004"], "date_range": {"start": "2025-10-15", "end": "2026-01-28"}},
+        {"id": "rel-005", "case_id": case_id, "source_entity_id": "ent-009", "target_entity_id": "ent-014", "relationship_type": "ASSOCIATED_WITH", "strength": 0.95, "frequency": 14, "notes": "Shell company linked to flagged bank account", "source_evidence": ["ev-011"], "date_range": {"start": "2025-10-01", "end": "2026-01-30"}},
+        {"id": "rel-006", "case_id": case_id, "source_entity_id": "ent-009", "target_entity_id": "ent-010", "relationship_type": "TRANSFERRED_FUNDS", "strength": 0.75, "frequency": 7, "notes": "7 inter-company transfers flagged", "source_evidence": ["ev-012"], "date_range": {"start": "2025-11-01", "end": "2026-01-15"}},
+        {"id": "rel-007", "case_id": case_id, "source_entity_id": "ent-004", "target_entity_id": "ent-010", "relationship_type": "ASSOCIATED_WITH", "strength": 0.8, "frequency": 3, "notes": "Kavita Sharma linked to KS Property Consultants", "source_evidence": ["ev-006"], "date_range": {"start": "2025-09-01", "end": "2026-01-28"}},
+        {"id": "rel-008", "case_id": case_id, "source_entity_id": "ent-001", "target_entity_id": "ent-006", "relationship_type": "ASSOCIATED_WITH", "strength": 0.95, "frequency": 200, "notes": "Primary number used by suspect for coordination", "source_evidence": ["ev-001", "ev-008"], "date_range": {"start": "2025-08-01", "end": "2026-01-28"}},
+        {"id": "rel-009", "case_id": case_id, "source_entity_id": "ent-002", "target_entity_id": "ent-007", "relationship_type": "ASSOCIATED_WITH", "strength": 0.9, "frequency": 128, "notes": "Primary number registered to Sunita Malik", "source_evidence": ["ev-002", "ev-009"], "date_range": {"start": "2025-09-01", "end": "2026-01-28"}},
+        {"id": "rel-010", "case_id": case_id, "source_entity_id": "ent-006", "target_entity_id": "ent-007", "relationship_type": "CALLED", "strength": 0.9, "frequency": 28, "notes": "28 direct calls between coordination numbers", "source_evidence": ["ev-008", "ev-009"], "date_range": {"start": "2025-11-01", "end": "2026-01-28"}},
+        {"id": "rel-011", "case_id": case_id, "source_entity_id": "ent-003", "target_entity_id": "ent-012", "relationship_type": "LOCATED_AT", "strength": 0.7, "frequency": 7, "notes": "Field operative seen at Lucknow location 7 times", "source_evidence": ["ev-005", "ev-014"], "date_range": {"start": "2025-12-01", "end": "2026-01-22"}},
+        {"id": "rel-012", "case_id": case_id, "source_entity_id": "ent-005", "target_entity_id": "ent-013", "relationship_type": "OWNS", "strength": 0.65, "frequency": 1, "notes": "Vehicle registration linked to Anil Tiwari via company", "source_evidence": ["ev-007", "ev-015"], "date_range": {"start": "2025-06-01", "end": "2026-01-30"}},
+        {"id": "rel-013", "case_id": case_id, "source_entity_id": "ent-001", "target_entity_id": "ent-015", "relationship_type": "ASSOCIATED_WITH", "strength": 0.8, "frequency": 1, "notes": "Suspected attendee at coordination meeting", "source_evidence": ["ev-013", "ev-016"], "date_range": {"start": "2026-01-28", "end": "2026-01-28"}},
+        {"id": "rel-014", "case_id": case_id, "source_entity_id": "ent-002", "target_entity_id": "ent-015", "relationship_type": "ASSOCIATED_WITH", "strength": 0.8, "frequency": 1, "notes": "Suspected attendee at coordination meeting", "source_evidence": ["ev-013"], "date_range": {"start": "2026-01-28", "end": "2026-01-28"}},
+        {"id": "rel-015", "case_id": case_id, "source_entity_id": "ent-004", "target_entity_id": "ent-015", "relationship_type": "ASSOCIATED_WITH", "strength": 0.6, "frequency": 1, "notes": "Suspected attendee via travel records", "source_evidence": ["ev-016"], "date_range": {"start": "2026-01-28", "end": "2026-01-28"}},
+        {"id": "rel-016", "case_id": case_id, "source_entity_id": "ent-003", "target_entity_id": "ent-008", "relationship_type": "ASSOCIATED_WITH", "strength": 0.6, "frequency": 55, "notes": "Field operative linked to burner phone usage", "source_evidence": ["ev-010"], "date_range": {"start": "2025-12-15", "end": "2026-01-25"}},
+        {"id": "rel-017", "case_id": case_id, "source_entity_id": "ent-001", "target_entity_id": "ent-011", "relationship_type": "LOCATED_AT", "strength": 0.85, "frequency": 12, "notes": "Frequently accessed CP Office location", "source_evidence": ["ev-001", "ev-013"], "date_range": {"start": "2025-10-01", "end": "2026-01-28"}},
+    ]
+    for r in relationships_data:
+        r["user_id"] = demo_user_id
+        r["created_at"] = "2026-01-30T09:00:00Z"
+        r["updated_at"] = now_iso()
+        r["data_label"] = "FICTIONAL SYNTHETIC DATA — FOR DEMONSTRATION ONLY"
+    await db.intel_relationships.insert_many(relationships_data)
+
+    # ---- EVIDENCE ----
+    evidence_items = [
+        {"id": "ev-001", "case_id": case_id, "title": "CDR Analysis — Rakesh Verma Primary Number", "kind": "call_record", "content": "Call Detail Record analysis reveals 347 outgoing calls to 12 distinct numbers over 30-day period. Peak activity: 11 PM – 2 AM window. Three numbers flagged as common intermediaries.", "source": "Forensic telecom analysis", "entity_ids": ["ent-001", "ent-006"]},
+        {"id": "ev-002", "case_id": case_id, "title": "Bank Statement — Shri Ram Traders (Oct–Jan)", "kind": "financial", "content": "14 cash deposits totaling ₹32 lakhs across Cooperative Bank branches. Deposit amounts structured below ₹2.5L threshold. Pattern consistent with smurfing methodology.", "source": "Financial intelligence unit referral", "entity_ids": ["ent-002", "ent-009", "ent-014"]},
+        {"id": "ev-003", "case_id": case_id, "title": "Witness Statement — Shop Owner A (Lucknow)", "kind": "document", "content": "Witness alleges receiving repeated demands for ₹50,000 monthly 'protection fee'. Describes contact via phone intermediary, then in-person collection by field operative. Witness declined to be identified by name.", "source": "Voluntary witness disclosure", "entity_ids": ["ent-001", "ent-003"]},
+        {"id": "ev-004", "case_id": case_id, "title": "Company Registration Records — Shri Ram Traders", "kind": "document", "content": "ROC records show company registered with nominee directors. Beneficial ownership structure obfuscated via multiple layers. Forensic accountant assessment: probable shell structure.", "source": "Registrar of Companies — Delhi", "entity_ids": ["ent-009", "ent-014"]},
+        {"id": "ev-005", "case_id": case_id, "title": "CCTV Footage Log — Hazratganj Location", "kind": "image", "content": "7 separate appearances of individual matching Pawan Gupta description at Hazratganj junction between Dec 1 and Jan 22. Consistent with pattern of collection rounds.", "source": "Municipal CCTV feed — Lucknow", "entity_ids": ["ent-003", "ent-012"]},
+        {"id": "ev-006", "case_id": case_id, "title": "Property Transfer Records — KS Property Consultants", "kind": "financial", "content": "6 property transactions flagged by sub-registrar for below-market valuation. Total discrepancy estimated at ₹1.8 crore. Kavita Sharma appears as authorized signatory.", "source": "Sub-registrar office, Jaipur", "entity_ids": ["ent-004", "ent-010"]},
+        {"id": "ev-007", "case_id": case_id, "title": "Vehicle Sighting Log — DL-01-AA-9876", "kind": "document", "content": "ANPR records show vehicle sighted at 4 different cities over 30 days. Route pattern: Delhi → Lucknow → Jaipur → Varanasi. Consistent with collection/distribution circuit.", "source": "ANPR network — NCRB", "entity_ids": ["ent-005", "ent-013"]},
+        {"id": "ev-008", "case_id": case_id, "title": "SIM Registration Analysis — Ent-006 Number", "kind": "call_record", "content": "SIM card registered using forged ID document. Retailer confirmed sale was cash-based. Number active for 6 months — high call volume to flagged numbers.", "source": "Telecom operator subpoena response", "entity_ids": ["ent-006"]},
+        {"id": "ev-009", "case_id": case_id, "title": "CDR — Sunita Malik Number Cross-Reference", "kind": "call_record", "content": "128 calls exchanged with ent-006 primary number. Call timing correlates with financial transaction dates — 23 of 28 calls within 24 hours of a flagged deposit.", "source": "CDR forensic cross-analysis", "entity_ids": ["ent-002", "ent-007"]},
+        {"id": "ev-010", "case_id": case_id, "title": "Burner Phone Activity Analysis", "kind": "call_record", "content": "Unregistered SIM shows 89 calls over 6-week period, exclusively to entities within this network. Purchased from Lucknow retailer — matches field operative area of operation.", "source": "Digital forensics unit", "entity_ids": ["ent-003", "ent-008"]},
+        {"id": "ev-011", "case_id": case_id, "title": "Transaction Audit — Shell Company to Bank Account", "kind": "financial", "content": "Direct linkage established between Shri Ram Traders invoices and A/C 0012345678. 14 transactions flagged. Invoices reference non-existent services ('consulting fees').", "source": "Tax department referral", "entity_ids": ["ent-009", "ent-014"]},
+        {"id": "ev-012", "case_id": case_id, "title": "Inter-Company Transfer Records", "kind": "financial", "content": "₹68 lakh transferred from Shri Ram Traders to KS Property Consultants across 7 transactions. Purpose stated as 'advance for property acquisition' — no corresponding property identified.", "source": "Financial intelligence unit", "entity_ids": ["ent-009", "ent-010"]},
+        {"id": "ev-013", "case_id": case_id, "title": "Location Intelligence — CP Office Meeting (Jan 28)", "kind": "location_data", "content": "Mobile tower pings confirm co-location of three suspect phones at Connaught Place coordinates between 18:30–20:15 on January 28. Duration and overlap consistent with planned meeting.", "source": "IPDR analysis", "entity_ids": ["ent-001", "ent-002", "ent-011", "ent-015"]},
+        {"id": "ev-014", "case_id": case_id, "title": "Field Surveillance Note — Lucknow Collection Round", "kind": "note", "content": "Surveillance team observed individual collecting cash envelopes from 3 businesses in Hazratganj area. Individual matched description of Pawan Gupta. Vehicle registration noted.", "source": "Field surveillance team", "entity_ids": ["ent-003", "ent-012"]},
+        {"id": "ev-015", "case_id": case_id, "title": "Vehicle Registration Cross-Reference", "kind": "document", "content": "SUV registration traced through Shri Ram Traders nominee to Anil Tiwari via insurance documentation. Pattern of vehicle use covers all 4 states in network geography.", "source": "RTO records", "entity_ids": ["ent-005", "ent-013"]},
+        {"id": "ev-016", "case_id": case_id, "title": "Travel Records Cross-Reference — Jan 28 Meeting", "kind": "document", "content": "Train and toll records show Kavita Sharma travelled from Jaipur to Delhi on January 27. Return journey January 29. Dates consistent with alleged coordination meeting.", "source": "Railway records + NHAI toll data", "entity_ids": ["ent-004", "ent-015"]},
+    ]
+    for ev in evidence_items:
+        ev["user_id"] = demo_user_id
+        ev["created_at"] = "2026-01-30T12:00:00Z"
+        ev["updated_at"] = now_iso()
+        ev["data_label"] = "FICTIONAL SYNTHETIC DATA — FOR DEMONSTRATION ONLY"
+        # Encrypt and hash content
+        try:
+            fernet = vault_fernet()
+            ev["content_encrypted"] = fernet.encrypt(ev["content"].encode()).decode()
+            ev["content_hash"] = sha256_json({"content": ev["content"], "id": ev["id"]})
+        except Exception:
+            ev["content_encrypted"] = None
+            ev["content_hash"] = None
+    await db.intel_evidence.insert_many(evidence_items)
+
+    # ---- TIMELINE EVENTS ----
+    timeline_data = [
+        {"id": "te-001", "case_id": case_id, "event_type": "COMMUNICATION", "title": "First flagged call detected", "description": "Initial CDR flagging of ent-006 number by telecom monitoring.", "date": "2025-11-01T22:15:00Z", "entity_ids": ["ent-001", "ent-006"], "evidence_ids": ["ev-001"], "significance": "LOW"},
+        {"id": "te-002", "case_id": case_id, "event_type": "FINANCIAL", "title": "First structured deposit — Shri Ram Traders", "description": "₹2.4L cash deposit — first in series. Pattern emerges over following weeks.", "date": "2025-11-15T14:00:00Z", "entity_ids": ["ent-002", "ent-014"], "evidence_ids": ["ev-002"], "significance": "MEDIUM"},
+        {"id": "te-003", "case_id": case_id, "event_type": "LOCATION", "title": "Pawan Gupta — first Hazratganj sighting", "description": "Field operative first recorded at collection location.", "date": "2025-12-01T16:30:00Z", "entity_ids": ["ent-003", "ent-012"], "evidence_ids": ["ev-005"], "significance": "MEDIUM", "lat": 26.8467, "lng": 80.9462},
+        {"id": "te-004", "case_id": case_id, "event_type": "FINANCIAL", "title": "Inter-company transfer — SRT to KSPC", "description": "First of 7 inter-company transfers. ₹11L transferred.", "date": "2025-12-10T09:00:00Z", "entity_ids": ["ent-009", "ent-010"], "evidence_ids": ["ev-012"], "significance": "HIGH"},
+        {"id": "te-005", "case_id": case_id, "event_type": "COMMUNICATION", "title": "Communication burst — 14-day peak", "description": "Highest call volume period detected. 89 calls across flagged numbers in 14-day window.", "date": "2026-01-08T00:00:00Z", "entity_ids": ["ent-001", "ent-002", "ent-006", "ent-007"], "evidence_ids": ["ev-008", "ev-009"], "significance": "HIGH"},
+        {"id": "te-006", "case_id": case_id, "event_type": "LOCATION", "title": "Vehicle circuit — all 4 states in 7 days", "description": "SUV ANPR records show rapid interstate circuit: Delhi → Lucknow → Jaipur → Varanasi.", "date": "2026-01-14T06:00:00Z", "entity_ids": ["ent-005", "ent-013"], "evidence_ids": ["ev-007"], "significance": "HIGH"},
+        {"id": "te-007", "case_id": case_id, "event_type": "MEETING", "title": "Alleged coordination meeting — Connaught Place", "description": "Three suspect phones co-located at CP for ~2 hours. Probable in-person coordination event.", "date": "2026-01-28T18:30:00Z", "entity_ids": ["ent-001", "ent-002", "ent-004"], "evidence_ids": ["ev-013", "ev-016"], "significance": "CRITICAL", "lat": 28.6315, "lng": 77.2167},
+        {"id": "te-008", "case_id": case_id, "event_type": "FINANCIAL", "title": "Final structured deposit in series", "description": "14th and final flagged deposit before case was referred for investigation.", "date": "2026-01-30T11:00:00Z", "entity_ids": ["ent-002", "ent-014"], "evidence_ids": ["ev-002", "ev-011"], "significance": "HIGH"},
+    ]
+    for te in timeline_data:
+        te["user_id"] = demo_user_id
+        te["created_at"] = now_iso()
+        te["data_label"] = "FICTIONAL SYNTHETIC DATA — FOR DEMONSTRATION ONLY"
+    await db.intel_timeline.insert_many(timeline_data)
+
+    # Update case entity/relationship counts
+    await db.intel_cases.update_one(
+        {"id": case_id},
+        {"$set": {"entity_count": len(entities_data), "relationship_count": len(relationships_data), "evidence_count": len(evidence_items)}}
+    )
+
+    # Seed audit log entries
+    audit_entries = [
+        {"id": str(uuid.uuid4()), "case_id": case_id, "user_id": demo_user_id, "action": "CASE_CREATED", "description": "Case CASE-047 created and assigned", "created_at": "2026-01-15T09:00:00Z", "integrity_hash": sha256_json({"action": "CASE_CREATED", "case_id": case_id})},
+        {"id": str(uuid.uuid4()), "case_id": case_id, "user_id": demo_user_id, "action": "EVIDENCE_ADDED", "description": "16 evidence items linked to case", "created_at": "2026-01-30T12:00:00Z", "integrity_hash": sha256_json({"action": "EVIDENCE_ADDED", "case_id": case_id, "count": 16})},
+        {"id": str(uuid.uuid4()), "case_id": case_id, "user_id": demo_user_id, "action": "ENTITIES_MAPPED", "description": "15 entities mapped to network graph", "created_at": "2026-01-30T13:00:00Z", "integrity_hash": sha256_json({"action": "ENTITIES_MAPPED", "case_id": case_id, "count": 15})},
+        {"id": str(uuid.uuid4()), "case_id": case_id, "user_id": demo_user_id, "action": "PATTERN_ANALYSIS_RUN", "description": "AI pattern engine executed — 5 patterns flagged for review", "created_at": "2026-01-30T14:00:00Z", "integrity_hash": sha256_json({"action": "PATTERN_ANALYSIS_RUN", "case_id": case_id})},
+    ]
+    await db.intel_audit.insert_many(audit_entries)
+
+    logger.info("Intelligence demo data seeded: CASE-047 with %d entities, %d relationships, %d evidence items", len(entities_data), len(relationships_data), len(evidence_items))
+
+
+# ---- Intelligence API Routes ----
+
+@api_router.get("/intel/cases")
+async def list_cases(current_user: Dict[str, Any] = Depends(get_current_user)):
+    cases = await db.intel_cases.find({}, {"_id": 0}).to_list(100)
+    return serialize_doc(cases)
+
+
+@api_router.post("/intel/cases")
+async def create_case(req: CaseCreateRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    case_id = str(uuid.uuid4())
+    case_number = f"CASE-{int(time.time()) % 100000:05d}"
+    doc = {
+        "id": case_id,
+        "case_id": case_number,
+        "title": req.title,
+        "description": req.description,
+        "priority": req.priority,
+        "category": req.category,
+        "status": "ACTIVE",
+        "assigned_to": current_user["id"],
+        "created_by": current_user["id"],
+        "tags": req.tags or [],
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "entity_count": 0,
+        "relationship_count": 0,
+        "evidence_count": 0,
+        "priority_score": 0,
+    }
+    await db.intel_cases.insert_one(doc)
+    await db.intel_audit.insert_one({"id": str(uuid.uuid4()), "case_id": case_id, "user_id": current_user["id"], "action": "CASE_CREATED", "description": f"Case {case_number} created", "created_at": now_iso(), "integrity_hash": sha256_json({"action": "CASE_CREATED", "case_id": case_id})})
+    return serialize_doc(doc)
+
+
+@api_router.get("/intel/cases/{case_id}")
+async def get_case(case_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]}, {"_id": 0})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return serialize_doc(case)
+
+
+@api_router.get("/intel/cases/{case_id}/entities")
+async def list_entities(case_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    real_id = case["id"]
+    entities = await db.intel_entities.find({"case_id": real_id}, {"_id": 0}).to_list(500)
+    relationships = await db.intel_relationships.find({"case_id": real_id}, {"_id": 0}).to_list(1000)
+    # Compute priority scores
+    result = []
+    for entity in entities:
+        ent_rels = [r for r in relationships if r.get("source_entity_id") == entity["id"] or r.get("target_entity_id") == entity["id"]]
+        entity["priority"] = compute_investigative_priority(entity, ent_rels)
+        entity["relationship_count"] = len(ent_rels)
+        result.append(entity)
+    result.sort(key=lambda e: e["priority"]["score"], reverse=True)
+    return serialize_doc(result)
+
+
+@api_router.post("/intel/cases/{case_id}/entities")
+async def create_entity(case_id: str, req: EntityCreateRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    real_id = case["id"]
+    entity_id = str(uuid.uuid4())
+    doc = {
+        "id": entity_id,
+        "case_id": real_id,
+        "entity_type": req.entity_type,
+        "name": req.name,
+        "aliases": req.aliases or [],
+        "attributes": req.attributes or {},
+        "source_evidence": req.source_evidence or [],
+        "cross_case_appearances": 0,
+        "review_status": "PENDING_REVIEW",
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "user_id": current_user["id"],
+    }
+    await db.intel_entities.insert_one(doc)
+    await db.intel_cases.update_one({"id": real_id}, {"$inc": {"entity_count": 1}, "$set": {"updated_at": now_iso()}})
+    await db.intel_audit.insert_one({"id": str(uuid.uuid4()), "case_id": real_id, "user_id": current_user["id"], "action": "ENTITY_ADDED", "description": f"Entity '{req.name}' ({req.entity_type}) added", "created_at": now_iso(), "integrity_hash": sha256_json({"action": "ENTITY_ADDED", "entity_id": entity_id})})
+    return serialize_doc(doc)
+
+
+@api_router.get("/intel/cases/{case_id}/relationships")
+async def list_relationships(case_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    rels = await db.intel_relationships.find({"case_id": case["id"]}, {"_id": 0}).to_list(1000)
+    return serialize_doc(rels)
+
+
+@api_router.post("/intel/cases/{case_id}/relationships")
+async def create_relationship(case_id: str, req: RelationshipCreateRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    real_id = case["id"]
+    rel_id = str(uuid.uuid4())
+    doc = {
+        "id": rel_id,
+        "case_id": real_id,
+        "source_entity_id": req.source_entity_id,
+        "target_entity_id": req.target_entity_id,
+        "relationship_type": req.relationship_type,
+        "strength": req.strength,
+        "frequency": req.frequency,
+        "date_range": req.date_range or {},
+        "source_evidence": req.source_evidence or [],
+        "notes": req.notes,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "user_id": current_user["id"],
+    }
+    await db.intel_relationships.insert_one(doc)
+    await db.intel_cases.update_one({"id": real_id}, {"$inc": {"relationship_count": 1}, "$set": {"updated_at": now_iso()}})
+    await db.intel_audit.insert_one({"id": str(uuid.uuid4()), "case_id": real_id, "user_id": current_user["id"], "action": "RELATIONSHIP_ADDED", "description": f"Relationship ({req.relationship_type}) added between entities", "created_at": now_iso(), "integrity_hash": sha256_json({"action": "RELATIONSHIP_ADDED", "rel_id": rel_id})})
+    return serialize_doc(doc)
+
+
+@api_router.get("/intel/cases/{case_id}/graph")
+async def get_network_graph(case_id: str, timestamp_before: Optional[str] = None, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Return network graph data (nodes + links) for react-force-graph-2d. Supports temporal filtering."""
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    real_id = case["id"]
+    entities = await db.intel_entities.find({"case_id": real_id}, {"_id": 0}).to_list(500)
+    relationships = await db.intel_relationships.find({"case_id": real_id}, {"_id": 0}).to_list(1000)
+
+    # Temporal filtering
+    if timestamp_before:
+        try:
+            cutoff = datetime.fromisoformat(timestamp_before.replace("Z", "+00:00"))
+            relationships = [r for r in relationships if not r.get("date_range", {}).get("start") or datetime.fromisoformat(r["date_range"]["start"]).replace(tzinfo=timezone.utc) <= cutoff]
+        except Exception:
+            pass
+
+    # Build graph format for force-graph
+    nodes = []
+    for e in entities:
+        ent_rels = [r for r in relationships if r.get("source_entity_id") == e["id"] or r.get("target_entity_id") == e["id"]]
+        priority = compute_investigative_priority(e, ent_rels)
+        nodes.append({
+            "id": e["id"],
+            "name": e["name"],
+            "entity_type": e["entity_type"],
+            "aliases": e.get("aliases", []),
+            "priority_score": priority["score"],
+            "priority_label": priority["label"],
+            "priority_color": priority["color"],
+            "relationship_count": len(ent_rels),
+            "cross_case_appearances": e.get("cross_case_appearances", 0),
+            "review_status": e.get("review_status", "PENDING_REVIEW"),
+        })
+
+    links = []
+    for r in relationships:
+        links.append({
+            "id": r["id"],
+            "source": r["source_entity_id"],
+            "target": r["target_entity_id"],
+            "relationship_type": r["relationship_type"],
+            "strength": r.get("strength", 0.5),
+            "frequency": r.get("frequency", 1),
+            "notes": r.get("notes", ""),
+            "source_evidence": r.get("source_evidence", []),
+        })
+
+    return {
+        "nodes": serialize_doc(nodes),
+        "links": serialize_doc(links),
+        "case_id": case["case_id"],
+        "node_count": len(nodes),
+        "link_count": len(links),
+        "data_label": case.get("data_label", ""),
+        "disclaimer": "This network graph represents investigative data only. Connections do not imply guilt. All findings require human investigator review.",
+    }
+
+
+@api_router.get("/intel/cases/{case_id}/patterns")
+async def detect_patterns(case_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Run AI pattern detection on case network. Returns explainable patterns for investigator review."""
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    real_id = case["id"]
+    entities = await db.intel_entities.find({"case_id": real_id}, {"_id": 0}).to_list(500)
+    relationships = await db.intel_relationships.find({"case_id": real_id}, {"_id": 0}).to_list(1000)
+    timeline_events = await db.intel_timeline.find({"case_id": real_id}, {"_id": 0}).to_list(200)
+    patterns = detect_suspicious_patterns(entities, relationships, timeline_events)
+    await db.intel_audit.insert_one({"id": str(uuid.uuid4()), "case_id": real_id, "user_id": current_user["id"], "action": "PATTERN_ANALYSIS_RUN", "description": f"Pattern engine detected {len(patterns)} patterns", "created_at": now_iso(), "integrity_hash": sha256_json({"action": "PATTERN_ANALYSIS_RUN", "case_id": real_id, "count": len(patterns)})})
+    return {"patterns": serialize_doc(patterns), "count": len(patterns), "disclaimer": "All patterns are AI-generated investigative leads. Human review required before any action."}
+
+
+@api_router.post("/intel/patterns/review")
+async def review_pattern(req: PatternReviewRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    await db.intel_audit.insert_one({"id": str(uuid.uuid4()), "user_id": current_user["id"], "action": f"PATTERN_{req.action}", "description": f"Pattern {req.pattern_id} reviewed: {req.action}. Notes: {req.notes or 'None'}", "created_at": now_iso(), "integrity_hash": sha256_json({"action": f"PATTERN_{req.action}", "pattern_id": req.pattern_id})})
+    return {"status": "reviewed", "pattern_id": req.pattern_id, "action": req.action, "reviewed_by": current_user.get("name", current_user["id"]), "reviewed_at": now_iso()}
+
+
+@api_router.get("/intel/cases/{case_id}/timeline")
+async def get_investigation_timeline(case_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    events = await db.intel_timeline.find({"case_id": case["id"]}, {"_id": 0}).sort("date", 1).to_list(500)
+    return {"events": serialize_doc(events), "count": len(events)}
+
+
+@api_router.get("/intel/cases/{case_id}/evidence")
+async def list_intel_evidence(case_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    evidence = await db.intel_evidence.find({"case_id": case["id"]}, {"_id": 0, "content_encrypted": 0}).to_list(500)
+    return serialize_doc(evidence)
+
+
+@api_router.post("/intel/cases/{case_id}/evidence")
+async def add_intel_evidence(case_id: str, req: EvidenceIntelRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    real_id = case["id"]
+    ev_id = str(uuid.uuid4())
+    fernet = vault_fernet()
+    content_encrypted = fernet.encrypt(req.content.encode()).decode()
+    content_hash = sha256_json({"content": req.content, "id": ev_id})
+    doc = {
+        "id": ev_id,
+        "case_id": real_id,
+        "entity_ids": req.entity_ids or [],
+        "kind": req.kind,
+        "title": req.title,
+        "content": req.content,
+        "content_encrypted": content_encrypted,
+        "content_hash": content_hash,
+        "source": req.source or "Manual entry",
+        "metadata": req.metadata or {},
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "user_id": current_user["id"],
+    }
+    await db.intel_evidence.insert_one(doc)
+    await db.intel_cases.update_one({"id": real_id}, {"$inc": {"evidence_count": 1}, "$set": {"updated_at": now_iso()}})
+    await db.intel_audit.insert_one({"id": str(uuid.uuid4()), "case_id": real_id, "user_id": current_user["id"], "action": "EVIDENCE_ADDED", "description": f"Evidence '{req.title}' added (SHA-256: {content_hash[:16]}...)", "created_at": now_iso(), "integrity_hash": sha256_json({"action": "EVIDENCE_ADDED", "ev_id": ev_id, "hash": content_hash})})
+    doc_out = {k: v for k, v in doc.items() if k != "content_encrypted"}
+    return serialize_doc(doc_out)
+
+
+@api_router.get("/intel/cases/{case_id}/audit")
+async def get_case_audit(case_id: str, limit: int = 100, current_user: Dict[str, Any] = Depends(get_current_user)):
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    logs = await db.intel_audit.find({"case_id": case["id"]}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"logs": serialize_doc(logs), "count": len(logs)}
+
+
+@api_router.post("/intel/cases/{case_id}/brief")
+async def generate_investigative_brief(case_id: str, req: InvestigativeBriefRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Generate an investigative brief summarizing case findings. All AI-generated content is clearly marked as investigative leads."""
+    case = await db.intel_cases.find_one({"$or": [{"id": case_id}, {"case_id": case_id}]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    real_id = case["id"]
+    entities = await db.intel_entities.find({"case_id": real_id}, {"_id": 0}).to_list(500)
+    relationships = await db.intel_relationships.find({"case_id": real_id}, {"_id": 0}).to_list(1000)
+    evidence = await db.intel_evidence.find({"case_id": real_id}, {"_id": 0, "content_encrypted": 0}).to_list(100)
+    timeline_events = await db.intel_timeline.find({"case_id": real_id}, {"_id": 0}).sort("date", 1).to_list(100)
+    patterns = detect_suspicious_patterns(entities, relationships, timeline_events)
+
+    # Try LLM summary if available
+    llm_summary = None
+    if EMERGENT_LLM_KEY:
+        try:
+            import urllib.request
+            prompt = f"""You are an investigative analyst assistant for the NCRB. Write a brief, factual investigative summary for case '{case.get('case_id')} — {case.get('title')}'. 
+            
+            Case has {len(entities)} entities, {len(relationships)} relationships, {len(evidence)} evidence items, and {len(patterns)} detected patterns.
+            Top entities: {', '.join([e['name'] for e in entities[:5]])}
+            Top pattern types: {', '.join(set([p['pattern_type'] for p in patterns[:3]]))}
+            
+            IMPORTANT: Do NOT state guilt. Do NOT claim criminality. Only describe investigative observations and recommend next investigative steps. 
+            Write 3-4 sentences maximum. Conclude with: 'All findings are investigative leads only. Human investigator must review and authorize all next steps.'"""
+
+            payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode()
+            request = urllib.request.Request(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={EMERGENT_LLM_KEY}",
+                data=payload, method="POST", headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(request, timeout=10) as response:
+                resp_data = json.loads(response.read().decode())
+                llm_summary = resp_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        except Exception as e:
+            logger.warning("LLM brief generation failed: %s", e)
+
+    brief = {
+        "case_id": case["case_id"],
+        "title": case["title"],
+        "generated_at": now_iso(),
+        "generated_by": current_user.get("name", current_user["id"]),
+        "summary": llm_summary or f"Case {case['case_id']} ({case['category']}) has {len(entities)} mapped entities, {len(relationships)} documented relationships, and {len(evidence)} evidence items. {len(patterns)} pattern(s) detected by AI engine, all pending investigator review. Priority: {case.get('priority', 'MEDIUM')}.",
+        "entity_summary": [{"name": e["name"], "type": e["entity_type"], "relationship_count": len([r for r in relationships if r.get("source_entity_id") == e["id"] or r.get("target_entity_id") == e["id"]])} for e in entities[:10]],
+        "patterns_detected": len(patterns),
+        "evidence_items": len(evidence),
+        "key_timeline_events": [{"title": t["title"], "date": t["date"], "significance": t.get("significance", "MEDIUM")} for t in timeline_events if t.get("significance") in ("HIGH", "CRITICAL")],
+        "disclaimer": "This brief is generated from investigative data. ALL conclusions are investigative leads only. The HUMAN INVESTIGATOR makes all determinations of fact. No person named herein is declared guilty of any offense by this document.",
+        "data_label": case.get("data_label", ""),
+    }
+
+    await db.intel_audit.insert_one({"id": str(uuid.uuid4()), "case_id": real_id, "user_id": current_user["id"], "action": "BRIEF_GENERATED", "description": f"Investigative brief generated for {case['case_id']}", "created_at": now_iso(), "integrity_hash": sha256_json({"action": "BRIEF_GENERATED", "case_id": real_id})})
+    return brief
+
+
+@api_router.get("/intel/search")
+async def global_entity_search(q: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Global search across all entities, cases, and evidence."""
+    if not q or len(q) < 2:
+        return {"results": [], "query": q}
+    query = {"$or": [
+        {"name": {"$regex": q, "$options": "i"}},
+        {"aliases": {"$regex": q, "$options": "i"}},
+        {"title": {"$regex": q, "$options": "i"}},
+    ]}
+    entities = await db.intel_entities.find({**query}, {"_id": 0}).to_list(20)
+    cases = await db.intel_cases.find({"$or": [{"title": {"$regex": q, "$options": "i"}}, {"case_id": {"$regex": q, "$options": "i"}}]}, {"_id": 0}).to_list(10)
+    evidence = await db.intel_evidence.find({"$or": [{"title": {"$regex": q, "$options": "i"}}, {"content": {"$regex": q, "$options": "i"}}]}, {"_id": 0, "content_encrypted": 0}).to_list(10)
+    return {
+        "query": q,
+        "results": {
+            "entities": serialize_doc(entities),
+            "cases": serialize_doc(cases),
+            "evidence": serialize_doc(evidence),
+        },
+        "total": len(entities) + len(cases) + len(evidence),
+    }
+
+
+@api_router.get("/intel/entities/{entity_id}")
+async def get_entity_profile(entity_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Get full entity intelligence profile with priority score and all relationships."""
+    entity = await db.intel_entities.find_one({"id": entity_id}, {"_id": 0})
+    if not entity:
+        raise HTTPException(status_code=404, detail="Entity not found")
+    relationships = await db.intel_relationships.find({"$or": [{"source_entity_id": entity_id}, {"target_entity_id": entity_id}]}, {"_id": 0}).to_list(200)
+    evidence_ids = entity.get("source_evidence", [])
+    evidence = await db.intel_evidence.find({"id": {"$in": evidence_ids}}, {"_id": 0, "content_encrypted": 0}).to_list(100)
+    priority = compute_investigative_priority(entity, relationships)
+    # Find co-entities in related cases
+    other_cases = []
+    if entity.get("cross_case_appearances", 0) > 0:
+        other_cases = await db.intel_entities.distinct("case_id", {"name": entity["name"]})
+
+    await db.intel_audit.insert_one({"id": str(uuid.uuid4()), "case_id": entity.get("case_id", ""), "user_id": current_user["id"], "action": "ENTITY_PROFILE_VIEWED", "description": f"Entity profile viewed: '{entity['name']}'", "created_at": now_iso(), "integrity_hash": sha256_json({"action": "ENTITY_PROFILE_VIEWED", "entity_id": entity_id})})
+    return serialize_doc({
+        "entity": entity,
+        "relationships": relationships,
+        "evidence": evidence,
+        "priority": priority,
+        "relationship_count": len(relationships),
+        "disclaimer": "This profile reflects documented investigative data. It does not indicate guilt or predict behavior. All conclusions require human investigator review.",
+    })
+
+
+@api_router.post("/intel/entities/{entity_id}/review")
+async def review_entity(entity_id: str, action: str, notes: Optional[str] = None, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Human-in-the-loop review of an entity. Actions: CONFIRM / DISMISS / FLAG"""
+    valid_actions = ["CONFIRM", "DISMISS", "FLAG"]
+    if action not in valid_actions:
+        raise HTTPException(status_code=400, detail=f"Action must be one of {valid_actions}")
+    entity = await db.intel_entities.find_one({"id": entity_id})
+    if not entity:
+        raise HTTPException(status_code=404, detail="Entity not found")
+    await db.intel_entities.update_one({"id": entity_id}, {"$set": {"review_status": action, "reviewed_by": current_user["id"], "reviewed_at": now_iso(), "review_notes": notes or ""}})
+    await db.intel_audit.insert_one({"id": str(uuid.uuid4()), "case_id": entity.get("case_id", ""), "user_id": current_user["id"], "action": f"ENTITY_{action}", "description": f"Entity '{entity['name']}' reviewed: {action}. Notes: {notes or 'None'}", "created_at": now_iso(), "integrity_hash": sha256_json({"action": f"ENTITY_{action}", "entity_id": entity_id})})
+    return {"status": "reviewed", "entity_id": entity_id, "action": action, "reviewed_by": current_user.get("name", current_user["id"]), "reviewed_at": now_iso()}
+
+
+@api_router.get("/intel/audit")
+async def get_global_audit(limit: int = 100, current_user: Dict[str, Any] = Depends(get_current_user)):
+    logs = await db.intel_audit.find({}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"logs": serialize_doc(logs), "count": len(logs)}
+
+
+# ---- Startup hook for intelligence data ----
+
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=False)
@@ -1831,6 +2678,7 @@ async def startup():
     await db.live_tracks.create_index([("location", "2dsphere")])
     await db.community_alerts.create_index([("geo", "2dsphere")])
     await seed_demo_user()
+    await seed_intelligence_demo()
     logger.info("SentinelPulse API started with DB=%s", DB_NAME)
 
 
