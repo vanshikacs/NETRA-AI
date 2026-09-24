@@ -71,9 +71,10 @@ import {
 const BACKEND_URL = (
   process.env.REACT_APP_BACKEND_URL ||
   (window.location.hostname.includes("vercel.app")
-    ? "https://sentinelpulse-jh6r.onrender.com"
+    ? "https://netra-ai-dvea.onrender.com"
     : "http://localhost:8000")
 ).replace(/\/+$/, "");
+
 
 const api = axios.create({
   baseURL: `${BACKEND_URL}/api`,

@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://sentinelpulse-jh6r.onrender.com/api/$1"
+      "destination": "https://netra-ai-dvea.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",
@@ -10,4 +10,3 @@
     }
   ]
 }
-
